@@ -1,0 +1,39 @@
+name: Test on push and PR
+
+on:
+    push:
+      tags:
+        - 'v*'
+    pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.12'] #, '3.13']
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install Poetry
+      run: |
+            pip install --no-input poetry
+    - name: Install dependencies
+      run: |
+        poetry install
+    - name: Test with tox
+    #   run: poetry run invoke test --tox-env ${{ matrix.tox-env }}
+      run: poetry run tox
+
+#   finish:
+#     needs: test
+#     if: ${{ always() }}
+#     runs-on: ubuntu-latest
