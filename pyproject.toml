@@ -49,10 +49,12 @@ version_files = [
     ]
 
 [tool.poetry.dependencies] # https://python-poetry.org/docs/dependency-specification/
-numpy = "^2.0.0"
-pandas = "^2.2.2"
+numpy = "^2"
+pandas = "^2"
+pint = "^0"
 python = ">=3.11,<3.13"
 pydantic = ">=2.4.0"
+xmltodict = "^0"
 
 [tool.poetry.group.dev.dependencies]  # https://python-poetry.org/docs/master/managing-dependencies/
 pip = ">=23"

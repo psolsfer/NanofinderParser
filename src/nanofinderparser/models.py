@@ -2,18 +2,20 @@
 
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeVar
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_core.core_schema import ValidationInfo
-from pydataset.spectraset import SpectraSet
-from pydataset.utils.types import NPDtype_co
-from pydataset.utils.units import CONVERSION_UNITS, convert_spectral_units
 
+# from pydataset.spectraset import SpectraSet
 from nanofinderparser.map import _nanofinder_mapcoords
+from nanofinderparser.units import CONVERSION_UNITS, convert_spectral_units
+
+# Type for generic numpy arrays
+NPDtype_co = TypeVar("NPDtype_co", bound=np.generic, covariant=True)
 
 
 class VendorVersion(BaseModel):
@@ -260,10 +262,10 @@ class Mapping(VendorVersion, BaseModel):
 
         return data, mapcoords
 
-    def export_to_dataset(self, dataset_kind=SpectraSet) -> SpectraSet:
-        # TODO # ISSUE #50 Export the Mapping to a dataset
-        # Accepts the kind of dataset as an argument, and returns that same kind of dataset
-        pass
+    # def export_to_dataset(self, dataset_kind=SpectraSet) -> SpectraSet:
+    #     # TODO # ISSUE #50 Export the Mapping to a dataset
+    #     # Accepts the kind of dataset as an argument, and returns that same kind of dataset
+    #     pass
 
     def _to_spectral_units(self, new_unit: CONVERSION_UNITS | None) -> NDArray[np.float64]:
         """Convert the spectral units to the given ones.

@@ -10,7 +10,7 @@ from nanofinderparser.parsers import read_binary_part, read_xml_part
 
 # MAPPING_FILE_RAW = Path("_working/Nanofinder_raw_files/mapping_file_hBN.smd")
 
-# TODO # ISSUE #45
+# TODO # ISSUE #1
 
 # TODO Need to handle the unit conversion to "raman_shift" properly (now just cm-1...)
 
