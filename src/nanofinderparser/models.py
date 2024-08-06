@@ -33,9 +33,14 @@ class FrameHeader(VendorVersion, BaseModel):
     ScannedDataName: str  # IMPORTANT???
 
     @field_validator("Date", mode="before")
-    def parse_date(cls, value: str, info: ValidationInfo) -> str:
+    def parse_date(cls, value: str, info: ValidationInfo) -> date:
         """To properly parse the date."""
-        return value.replace("/", "-")
+        return datetime.strptime(value, "%Y/%m/%d").date()
+
+    @field_validator("Time", mode="before")
+    def parse_time(cls, value: str, info: ValidationInfo) -> time:
+        """To properly parse the time."""
+        return datetime.strptime(value, "%H:%M:%S").time()
 
     @property
     def datetime(self) -> datetime:

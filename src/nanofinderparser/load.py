@@ -8,8 +8,6 @@ from pathlib import Path
 from nanofinderparser.models import Mapping
 from nanofinderparser.parsers import read_binary_part, read_xml_part
 
-# MAPPING_FILE_RAW = Path("_working/Nanofinder_raw_files/mapping_file_hBN.smd")
-
 # TODO # ISSUE #1
 
 # TODO Need to handle the unit conversion to "raman_shift" properly (now just cm-1...)
@@ -53,7 +51,11 @@ def load_smd_file(file: Path) -> Mapping:  # NOTE Will return a Mapping Model.
     return Mapping(**xml_data["SCANDATA"])
 
 
-# mapping_data = load_smd_file(MAPPING_FILE_RAW)
+# MAPPING_FILE_RAW = Path("_working/Nanofinder_raw_files/mapping_file_hBN.smd")
+MAPPING_FILE_RAW = Path("_working/PL_MoS2WS2_NR.smd")
+
+mapping_data = load_smd_file(MAPPING_FILE_RAW)
+print(mapping_data)
 # # mapping_data._to_spectral_units("cm-1")
 
 # mapping_data.export_to_csv(path=Path("_working/Nanofinder_raw_files"), spectral_units="cm-1")
