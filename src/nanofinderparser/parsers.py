@@ -26,19 +26,19 @@ def read_xml_part(file: Path, position: int = 0) -> tuple[dict[str, Any], int]:
         The current position in the file.
     """
     with Path.open(file, "rb") as f:
-        lines = []
+        xml_content = b""
         first_tag = None
         f.seek(position)  # Move to the indicated position
         for line in f:
             if first_tag is None and not line.strip().startswith(b"<?xml"):
                 first_tag = line.split()[0][1:-1]
-            lines.append(line)
+
+            xml_content += line
 
             if first_tag and line.strip().startswith(b"</" + first_tag + b">"):
                 break
 
-        xml_part = b"".join(lines)
-        xml_data = xmltodict.parse(xml_part)
+        xml_data = xmltodict.parse(xml_content)
 
         return xml_data, f.tell()
 
@@ -91,11 +91,12 @@ def read_binary_part(
     with Path.open(file, "rb") as f:
         f.seek(position)  # Move to the indicated position
         data_bin = f.read()
-        length_of_binary_part = len(data_bin)
-        data = []
-        for i in range(0, length_of_binary_part, data_size):
-            chunk = data_bin[i : i + data_size]
-            if len(chunk) < data_size:
-                break
-            data.extend(struct.unpack(data_format, chunk))
+
+    length_of_binary_part = len(data_bin)
+    data = []
+    for i in range(0, length_of_binary_part, data_size):
+        chunk = data_bin[i : i + data_size]
+        if len(chunk) < data_size:
+            break
+        data.extend(struct.unpack(data_format, chunk))
     return data

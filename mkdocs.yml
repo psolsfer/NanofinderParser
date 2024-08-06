@@ -94,3 +94,11 @@ extra:
           name: Github
         - icon: material/email
           link: "mailto:psolsfer@gmail.com"
+
+nav:
+  - Home: index.md
+  - Usage: usage.md
+  - API Reference:
+    - Models: api/models.md
+    - Parsers: api/parsers.md
+    - Units: api/units.md

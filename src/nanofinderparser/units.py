@@ -76,7 +76,7 @@ def convert_spectral_units(
 
     Parameters
     ----------
-    value : float or np.ndarray
+    value : float | np.ndarray | Quantity
         The spectral data to convert.
     unit_in : {"nm", "cm_1", "eV", "raman_shift"}
         The unit of the input data.
@@ -89,8 +89,11 @@ def convert_spectral_units(
 
     Returns
     -------
-    float or np.ndarray
-        The converted spectral data.
+    float or np.ndarray or pint.Quantity
+        The converted spectral data. The return type matches the input type of `value`:
+        - If `value` is a float or np.ndarray, returns a float or np.ndarray.
+        - If `value` is a pint.Quantity, returns a pint.Quantity.
+
 
     Raises
     ------
