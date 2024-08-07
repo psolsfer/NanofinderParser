@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from pydantic_core.core_schema import ValidationInfo
 
 # from pydataset.spectraset import SpectraSet
 from nanofinderparser.map import _nanofinder_mapcoords
@@ -69,13 +68,13 @@ class FrameHeader(VendorVersion, BaseModel):
 
     @field_validator("date_model", mode="before")
     @classmethod
-    def parse_date(cls, value: str, info: ValidationInfo) -> date:
+    def parse_date(cls, value: str) -> date:
         """To properly parse the date."""
         return datetime.strptime(value, "%Y/%m/%d").date()
 
     @field_validator("time_model", mode="before")
     @classmethod
-    def parse_time(cls, value: str, info: ValidationInfo) -> time:
+    def parse_time(cls, value: str) -> time:
         """To properly parse the time."""
         return datetime.strptime(value, "%H:%M:%S").time()
 
@@ -305,13 +304,13 @@ class Channel(BaseModel):
 
     @field_validator("channel_axis_array", mode="before")
     @classmethod
-    def parse_chanelaxisarray(cls, value: str, info: ValidationInfo) -> NDArray[NPDtype_co]:
+    def parse_chanelaxisarray(cls, value: str) -> NDArray[NPDtype_co]:
         """Properly parse the ChannelAxisArray."""
         return np.fromstring(value, sep=" ")
 
     @field_validator("channel_info", mode="before")
     @classmethod
-    def parse_channel_info(cls, value: dict[str, str], info: ValidationInfo) -> ChannelInfo:
+    def parse_channel_info(cls, value: dict[str, str]) -> ChannelInfo:
         info_dict = {}
         for v in value.values():
             if "Temperature" in v:

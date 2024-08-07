@@ -42,7 +42,7 @@ def _nanofinder_mapcoords(x_size: int, y_size: int) -> pd.DataFrame:
 
     Examples
     --------
-    >>> mapcoords(3, 2)
+    >>> _nanofinder_mapcoords(3, 2)
        x  y
     0  0  0
     1  1  0
