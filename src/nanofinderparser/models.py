@@ -369,7 +369,7 @@ class Mapping:
     This class represents the mapping data from a NanoFinder .smd file, including
     scanned frame parameters and the actual spectral data.
 
-    Note: It is recommended to create instances of this class using the `load_smd_file`
+    Note: It is recommended to create instances of this class using the `load_smd`
     function rather than instantiating it directly.
 
     Attributes
