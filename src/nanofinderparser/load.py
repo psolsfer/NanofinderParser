@@ -60,7 +60,7 @@ def load_smd_file(file: Path) -> Mapping:
     binary_data = read_binary_part(file, file_position)
     scandata["Data"] = binary_data
 
-    return Mapping(**scandata)
+    return Mapping(scandata)
 
 
 # MAPPING_FILE_RAW = Path("_working/Nanofinder_raw_files/mapping_file_hBN.smd")

@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -29,8 +29,8 @@ class VendorVersion(BaseModel):
         The version number or identifier.
     """
 
-    Vendor: str = Field(alias="Vendor")  # NOTE aliases can also be used
-    Version: str = Field(alias="Version")
+    vendor: str = Field(alias="Vendor")
+    version: str = Field(alias="Version")
 
 
 class FrameHeader(VendorVersion, BaseModel):
@@ -363,7 +363,7 @@ class ScannedFrameParameters(VendorVersion, BaseModel):
     data_calibration: DataCalibration = Field(alias="DataCalibration")
 
 
-class Mapping(VendorVersion, BaseModel):
+class Mapping:
     """Model for the complete mapping data obtained from a .smd file.
 
     This class represents the mapping data from a NanoFinder .smd file, including
@@ -372,27 +372,35 @@ class Mapping(VendorVersion, BaseModel):
     Note: It is recommended to create instances of this class using the `load_smd_file`
     function rather than instantiating it directly.
 
-    Parameters
-    ----------
-    scanned_frame_parameters : ScannedFrameParameters
-        The scanned frame parameters.
-    data : NDArray[NPDtype_co]
-        The actual mapping data.
-
     Attributes
     ----------
+    vendor : str
+        The vendor of the data.
+    version : str
+        The version of the data format.
     scanned_frame_parameters : ScannedFrameParameters
         The scanned frame parameters.
-    data : NDArray[NPDtype_co]
+    data : NDArray
         The actual mapping data.
-    laser_wavelength
-    laser_power
-    datetime
-    date
-    step_size
-    step_units
-    map_steps
-    map_size
+
+    Properties
+    ----------
+    laser_wavelength : float
+        Wavelength of the laser in nm.
+    laser_power : float
+        Power of the laser in mW.
+    datetime : datetime
+        Date and time of the measurement.
+    date : date
+        Date of the measurement.
+    step_size : tuple[float, float, float]
+        Size of the map steps in the (x,y,z) axes.
+    step_units : tuple[str, str, str]
+        Units of the map steps in the (x,y,z) axes.
+    map_steps : tuple[int, int, int]
+        Number of steps of the map in the (x,y,z) axes.
+    map_size : tuple[float, float, float]
+        Size of the map in the (x,y,z) axes, with the corresponding units for each axis.
 
     Methods
     -------
@@ -402,30 +410,64 @@ class Mapping(VendorVersion, BaseModel):
         Get the number of data points of each spectrum for the given channel.
     get_exposure_time(channel: int = 0)
         Get the exposure time of the given channel.
-    get_accumulation_number(channe: int = 0)
+    get_accumulation_number(channel: int = 0)
         Get the accumulation number of the given channel.
-    get_data_to_map(channel: int = 0)
+    _get_data_to_map(channel: int = 0)
         Reshape the data as the mapping: (x, y, spectrum) for the given channel.
-    get_channel_axis_unit(channel: int = 0)
+    _get_channel_axis_unit(channel: int = 0)
         Get the units of the spectral axis for the given channel.
-    export_to_csv(path: Path = Path(), filename: str = "", spectral_units: CONVERSION_UNITS | None = None, channel: int = 0)
+    export_to_csv(path: Path = Path(), filename: str = "", spectral_units: CONVERSION_UNITS | None = None, save_mapcoords: bool = False, channel: int = 0)
         Export the data to csv files.
     export_to_df(spectral_units: CONVERSION_UNITS | None = None, channel: int = 0)
         Export the data and mapcoords to DataFrames.
 
     Notes
     -----
-    Currently, some methods that accept a 'channel' parameter that defaults to channel = 0. At
-    present, we don't have SMD files with multiple channels, so it's not yet clear how to handle
-    them properly.
-    Until we encounter multi-channel SMD files, it's recommended to keep using channel = 0 for all
+    Currently, some methods that accept a 'channel' parameter default to 'channel = 0'. At present,
+    we don't have SMD files with multiple channels, so it's not yet clear how to handle them
+    properly. Until we encounter multi-channel SMD files, keep using 'channel = 0' for all
     operations.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)  # To allow having numpy arrays
+    def __init__(self, init_dict: dict[Any, Any]) -> None:
+        """Initialize a Mapping instance.
 
-    scanned_frame_parameters: ScannedFrameParameters = Field(alias="ScannedFrameParameters")
-    data: NDArray[NPDtype_co] = Field(alias="Data")  # Data for the spectra
+        Parameters
+        ----------
+        init_dict : dict[str, Any]
+            A dictionary containing the initialization data for the Mapping instance.
+            Expected keys:
+            - 'Vendor': str, optional
+            - 'Version': str, optional
+            - 'ScannedFrameParameters': dict
+            - 'Data': list[float]
+
+        Raises
+        ------
+        KeyError
+            If any of the required keys are missing from init_dict.
+        """
+        self.vendor: str = init_dict.get("Vendor", "")
+        self.version: str = init_dict.get("Version", "")
+        self.scanned_frame_parameters = ScannedFrameParameters(
+            **init_dict["ScannedFrameParameters"]
+        )
+        self.data = init_dict["Data"]
+
+    @property
+    def data(self) -> NDArray[Any]:
+        """The actual mapping data."""
+        return self._data
+
+    @data.setter
+    def data(self, value: list[float]) -> None:
+        value_array = np.asarray(value)  # dtype will be inferred
+
+        # Reshape the Data into a row per spectrum.
+        # FIXME This won't handle the case when there are more than one channel.
+        # Need a SMD file with several channels to inspect it and implement handling multichannels.
+        channel = 0
+        self._data = value_array.reshape(-1, self.get_spectral_axis_len(channel=0))
 
     def get_spectral_axis(self, channel: int = 0) -> NDArray[NPDtype_co]:
         """Get the spectral axis for the given channel.
@@ -671,16 +713,3 @@ class Mapping(VendorVersion, BaseModel):
             new_unit,
             laser_wavelength_nm=self.laser_wavelength,
         )
-
-    @field_validator("data", mode="before")
-    @classmethod
-    def parse_data(cls, value: str, info: ValidationInfo) -> NDArray[NPDtype_co]:
-        """To properly parse the Data."""
-        return np.asarray(value)  # TODO Use dtype = int??? Or does some kind of data be float???
-
-    def model_post_init(self, __context: None) -> None:
-        """Reshape the Data into a row per spectrum."""
-        # FIXME This won't handle the case when there are more than one channel.
-        # Need a SMD file with several channels to inspect it and implement handling multichannels.
-        channel = 0
-        self.data = self.data.reshape(-1, self.get_spectral_axis_len(channel=0))
