@@ -34,26 +34,9 @@ from pathlib import Path
 from nanofinderparser import load_smd_folder
 
 folder_path = Path("path/to/your/smd/files/folder")
-mapping_data_list = load_smd_folder(folder_path)
+for mapping in load_smd_folder(folder_path):
+    data = mapping.data
 ```
-
-The load_smd_folder function provides options for sequential, parallel, or adaptive loading based on the number of SMD files in the folder:
-
-```python
-# Force sequential loading
-mapping_data_list = load_smd_folder(folder_path, parallel_threshold=None)
-
-# Force parallel loading
-mapping_data_list = load_smd_folder(folder_path, parallel_threshold=0)
-
-# Custom threshold for parallel loading (e.g., use parallel if 20 or more files)
-mapping_data_list = load_smd_folder(folder_path, parallel_threshold=20)
-```
-
-!!! note
-    Parallel loading generally performs better when there are many files and/or the files are large.
-    However, for a small number of files or very small files, sequential loading might be faster.
-    The default threshold for parallel loading is 10 files.
 
 ### Accessing Parsed Data
 

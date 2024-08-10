@@ -6,6 +6,7 @@ authors = ["Pablo Solís-Fernández <psolsfer@gmail.com>"]
 readme = "README.md"
 homepage = "https://github.com/psolsfer/nanofinderparser"
 repository = "https://github.com/psolsfer/nanofinderparser"
+documentation = "https://nanofinderparser.readthedocs.io"
 keywords = ["nanofinderparser"]
 license = "BSD-3-Clause"
 classifiers = [     # Pypi classifiers: https://pypi.org/classifiers/
@@ -28,6 +29,7 @@ include = [
     "py.typed",
     "README.md",
     "tests/**/*",
+    "docs/**/*.{md,py,jpg,png,gif}",
 ]
 exclude = [
     "**/__pycache__",
@@ -37,6 +39,9 @@ exclude = [
 [build-system]  # https://python-poetry.org/docs/pyproject/#poetry-and-pep-517
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]  # https://python-poetry.org/docs/pyproject/#scripts
+"nanofinderparser" = "nanofinderparser.cli:app"
 
 [tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
 bump_message = "bump(release): v$current_version → v$new_version"
@@ -52,12 +57,13 @@ version_files = [
 numpy = "^2"
 pandas = "^2"
 pint = "^0"
-python = ">=3.11,<3.13"
+python = ">=3.12,<3.13"
 pydantic = ">=2.4.0"
 xmltodict = "^0"
 
 [tool.poetry.group.dev.dependencies]  # https://python-poetry.org/docs/master/managing-dependencies/
 pip = ">=23"
+invoke = ">=2.2"
 wheel = ">=0.41.2"
 watchdog = ">=3.0.0"
 tox = ">=4.11"
@@ -147,7 +153,7 @@ xfail_strict = true
 [tool.ruff]  # https://github.com/charliermarsh/ruff
 fix = true
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 ignore-init-module-imports = true

@@ -16,26 +16,8 @@ def test_load_smd_folder(tmp_path):
     for i in range(5):
         (tmp_path / f"test{i}.smd").touch()
 
-    mappings = load_smd_folder(tmp_path)
-    assert len(mappings) == 5
-    assert all(isinstance(m, Mapping) for m in mappings)
-
-
-def test_load_smd_folder_parallel(tmp_path):
-    # Create dummy SMD files
-    for i in range(15):
-        (tmp_path / f"test{i}.smd").touch()
-
-    mappings = load_smd_folder(tmp_path, parallel_threshold=10)
-    assert len(mappings) == 15
-    assert all(isinstance(m, Mapping) for m in mappings)
-
-
-def test_load_smd_folder_sequential(tmp_path):
-    # Create dummy SMD files
-    for i in range(5):
-        (tmp_path / f"test{i}.smd").touch()
-
-    mappings = load_smd_folder(tmp_path, parallel_threshold=None)
+    mappings = []
+    for mp in load_smd_folder(tmp_path):
+        mappings.append(mp)
     assert len(mappings) == 5
     assert all(isinstance(m, Mapping) for m in mappings)
