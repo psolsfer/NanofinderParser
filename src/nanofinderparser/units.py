@@ -4,16 +4,53 @@
 # ALSO NEEDS TO CHANGE THE column names of data/processed data/baseline/fit...
 # OTHER THAN THE SPECTRAL AXIS, needs to change the spectral range in the dataset...
 import logging
-from typing import Literal, TypeVar, overload
+from enum import Enum
+from typing import Any, TypeVar, overload
 
 import numpy as np
 from numpy.typing import NDArray
 from pint import Quantity, Unit, UnitRegistry
 
-CONVERSION_UNITS = Literal["nm", "cm_1", "eV", "raman_shift"]
-
 logger = logging.getLogger(__name__)
 FloatOrArray = TypeVar("FloatOrArray", float, NDArray[np.float64])
+
+
+class Units(str, Enum):
+    nm = "nm"
+    cm_1 = "cm_1"
+    ev = "eV"
+    raman_shift = "raman_shift"
+
+
+def validate_units(units: Units | str | Any) -> Units:
+    """Convert string to Units enum if necessary and validate the input.
+
+    Parameters
+    ----------
+    units : Units or str
+        The units to check and potentially convert.
+
+    Returns
+    -------
+    Units
+        The validated Units enum value.
+
+    Raises
+    ------
+    ValueError
+        If the input is not a valid Units enum value or string representation.
+    """
+    if isinstance(units, str):
+        try:
+            return Units(units.lower())
+        except ValueError as err:
+            raise ValueError(
+                f"Invalid units value: {units}. " f"Must be one of {', '.join(Units.__members__)}"
+            ) from err
+    elif isinstance(units, Units):
+        return units
+    else:
+        raise TypeError(f"Invalid type for units: {type(units)}. " f"Must be Units enum or str.")
 
 
 def setup_spectroscopy_constants(
@@ -51,8 +88,8 @@ def setup_spectroscopy_constants(
 @overload
 def convert_spectral_units(
     value: FloatOrArray,
-    unit_in: CONVERSION_UNITS,
-    unit_out: CONVERSION_UNITS,
+    unit_in: Units | str,
+    unit_out: Units | str,
     laser_wavelength_nm: float | Quantity = 532.000006769476,
 ) -> FloatOrArray: ...
 
@@ -60,16 +97,17 @@ def convert_spectral_units(
 @overload
 def convert_spectral_units(
     value: Quantity,
-    unit_in: CONVERSION_UNITS,  # FIXME Could be inferred from 'value' (value.units) but not for raman_shift...
-    unit_out: CONVERSION_UNITS,
+    unit_in: Units
+    | str,  # FIXME Could be inferred from 'value' (value.units) but not for raman_shift...
+    unit_out: Units | str,
     laser_wavelength_nm: float | Quantity = 532.000006769476,
 ) -> Quantity: ...
 
 
 def convert_spectral_units(
     value: FloatOrArray | Quantity,
-    unit_in: CONVERSION_UNITS,
-    unit_out: CONVERSION_UNITS,
+    unit_in: Units | str,
+    unit_out: Units | str,
     laser_wavelength_nm: float | Quantity = 532.000006769476,
 ) -> FloatOrArray | Quantity:
     """Convert spectral data between different units.
@@ -104,6 +142,9 @@ def convert_spectral_units(
 
     if unit_in == unit_out:
         return value
+
+    unit_in = validate_units(unit_in)
+    unit_out = validate_units(unit_out)
 
     # Uses the registry from any given Quantity
     if isinstance(value, Quantity):

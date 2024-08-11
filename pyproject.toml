@@ -59,6 +59,7 @@ pandas = "^2"
 pint = "^0"
 python = ">=3.12,<3.13"
 pydantic = ">=2.4.0"
+typer = "^0.12.3"
 xmltodict = "^0"
 
 [tool.poetry.group.dev.dependencies]  # https://python-poetry.org/docs/master/managing-dependencies/

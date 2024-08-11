@@ -1,15 +1,86 @@
 """Console script for nanofinderparser."""
-import sys
+
+from pathlib import Path
+from typing import Annotated, Optional
+
 import typer
+from rich.console import Console
+from rich.table import Table
+
+from nanofinderparser import load_smd
+from nanofinderparser.units import Units
+from nanofinderparser.utils import SaveMapCoords
+
 app = typer.Typer()
+console = Console()
+
+
+@app.command("convert", short_help="Convert a SMD file to CSV.")
+def convert_smd(
+    file: Annotated[Path, typer.Argument(..., help="Path to the SMD file")],
+    output: Annotated[Optional[Path], typer.Argument(help="Output path for the CSV file")] = None,
+    units: Annotated[
+        Units, typer.Option(case_sensitive=False, help="Units for the spectral axis")
+    ] = Units.raman_shift,
+    save_mapcoords: Annotated[
+        SaveMapCoords,
+        typer.Option(..., case_sensitive=False, help="How to save mapping coordinates"),
+    ] = SaveMapCoords.combined,
+) -> None:
+    """Convert an SMD file to CSV format."""
+    try:
+        mapping = load_smd(file)
+        output = output or file.with_suffix(".csv")
+        mapping.export_to_csv(
+            path=output.parent,
+            filename=output.name,
+            spectral_units=units.value,
+            save_mapcoords=save_mapcoords.value,
+        )
+        console.print(f"[green]Successfully converted {file} to {output}[/green]")
+    except Exception as e:
+        console.print(f"[red]Error converting file: {e}[/red]")
+        raise typer.Exit(code=1)
+
 
 @app.command()
-def main(args=None) -> None:
-    """Console script for nanofinderparser."""
-    typer.echo("Replace this message by putting your code into "
-               "nanofinderparser.cli.main")
-    typer.echo("See Typer documentation at https://typer.tiangolo.com/")
-    return None
+def info(file: Annotated[Path, typer.Argument(..., help="Path to the SMD file")]) -> None:
+    """Display information about an SMD file."""
+    try:
+        mapping = load_smd(file)
+        table = Table(title=f"SMD File Information: {file.name}")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="magenta")
+
+        table.add_row("Date", str(mapping.date))
+        table.add_row("Laser Wavelength", f"{mapping.laser_wavelength:.2f} nm")
+        table.add_row("Laser Power", f"{mapping.laser_power:.2f} mW")
+        table.add_row(
+            "Map Size",
+            f"{mapping.map_size[0]:.2f} x {mapping.map_size[1]:.2f} {mapping.step_units[0]}",
+        )
+        table.add_row("Map Steps", f"{mapping.map_steps[0]} x {mapping.map_steps[1]}")
+        table.add_row("Spectral Points", str(mapping.get_spectral_axis_len()))
+        table.add_row("Spectral Units", mapping._get_channel_axis_unit())
+
+        console.print(table)
+    except Exception as e:
+        console.print(f"[red]Error reading file: {e}[/red]")
+        raise typer.Exit(code=1)
+
+
+# @app.command()
+# def export_smd(
+#     mapping: Annotated[Path, typer.Argument(..., help="Path to the input CSV file")],
+#     output: Annotated[Optional[Path], typer.Option(None, help="Output path for the SMD file")],
+# ) -> None:
+#     """Export a CSV file back to SMD format."""
+#     try:
+#         # TODO: Implement the logic to convert CSV back to SMD
+#         console.print("[yellow]Export to SMD functionality not yet implemented.[/yellow]")
+#     except Exception as e:
+#         console.print(f"[red]Error exporting to SMD: {e}[/red]")
+#         raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

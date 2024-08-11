@@ -114,3 +114,5 @@ def load_smd_folder(folder_path: Path) -> Generator[Mapping, None, None]:
 # mapping_data.export_to_csv(filename="BORRAR.csv", spectral_units="eV")
 
 # print(mapping_data.scanned_frame_parameters.data_calibration.channels[0].channel_info)
+
+# mapping_data.export_to_smd(Path("_working/Nanofinder_raw_files/EXPORTED.smd"))

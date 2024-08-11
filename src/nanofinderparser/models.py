@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # from pydataset.spectraset import SpectraSet
 from nanofinderparser.map import _nanofinder_mapcoords
-from nanofinderparser.units import CONVERSION_UNITS, convert_spectral_units
+from nanofinderparser.units import Units, convert_spectral_units, validate_units
+from nanofinderparser.utils import SaveMapCoords, validate_savemapcoords
 
 # Type for generic numpy arrays
 NPDtype_co = TypeVar("NPDtype_co", bound=np.generic, covariant=True)
@@ -248,11 +249,11 @@ class ChannelInfo(BaseModel):
     from different data sources.
     """
 
-    temperature: float | None = None
-    exposure_time: float | None = None
-    cycle_time: float | None = None
-    acquisition_mode: str | None = None
-    accumulation_number: int | None = None
+    temperature: float | None = Field(None, alias="Temperature")
+    exposure_time: float | None = Field(None, alias="ExposureTime")
+    cycle_time: float | None = Field(None, alias="CycleTime")
+    acquisition_mode: str | None = Field(None, alias="AcquisitionMode")
+    accumulation_number: int | None = Field(None, alias="AccumulationNumber")
 
 
 class Channel(BaseModel):
@@ -415,9 +416,9 @@ class Mapping:
         Reshape the data as the mapping: (x, y, spectrum) for the given channel.
     _get_channel_axis_unit(channel: int = 0)
         Get the units of the spectral axis for the given channel.
-    export_to_csv(path: Path = Path(), filename: str = "", spectral_units: CONVERSION_UNITS | None = None, save_mapcoords: bool = False, channel: int = 0)
+    export_to_csv(path: Path = Path(), filename: str = "", spectral_units: Units | str | None = None, save_mapcoords: bool = False, channel: int = 0)
         Export the data to csv files.
-    export_to_df(spectral_units: CONVERSION_UNITS | None = None, channel: int = 0)
+    export_to_df(spectral_units: Units | str | None = None, channel: int = 0)
         Export the data and mapcoords to DataFrames.
 
     Notes
@@ -598,8 +599,8 @@ class Mapping:
         self,
         path: Path = Path(),
         filename: str = "",
-        spectral_units: CONVERSION_UNITS | None = None,
-        save_mapcoords: bool = False,
+        spectral_units: Units | str | None = None,
+        save_mapcoords: SaveMapCoords | str = SaveMapCoords.combined,
         channel: int = 0,
     ) -> None:
         """Export the data to csv files.
@@ -617,13 +618,22 @@ class Mapping:
         filename : str, optional
             Suffix to use for the name of the files, by default "".
             Any extension will be removed.
-        spectral_units : {"nm", "cm-1", "eV", "raman_shift"}, optional
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
             Units in which the spectral axis will be exported, by default None
-        save_mapcoords : bool, optional
-            Whether to save the file with the mapcoords. By default False.
+        save_mapcoords : SaveMapCoords or {"no", "combined", "separated"}, optional
+            How to save the mapping coordinates:
+            - "no": Don't save mapping coordinates
+            - "combined": Save mapping coordinates in the same file as the data
+            - "separated": Save mapping coordinates in a separate file
+            By default SaveMapCoords.combined.
         channel : int, optional
             The channel index to export, by default 0
         """
+        save_mapcoords = validate_savemapcoords(save_mapcoords)
+
+        if spectral_units is not None:
+            spectral_units = validate_units(spectral_units)
+
         data, mapcoords = self.export_to_df(spectral_units, channel=channel)
 
         if not filename:
@@ -631,19 +641,21 @@ class Mapping:
             coord_file_path = path / "mapcoords.csv"
         else:
             filename = Path(filename).with_suffix("").as_posix()
-            if save_mapcoords:
+            if save_mapcoords == "separated":
                 map_file_path = path / (filename + "_data.csv")
             else:
                 map_file_path = path / (filename + ".csv")
             coord_file_path = path / (filename + "_mapcoords.csv")
 
-        data.to_csv(map_file_path, na_rep="NaN", index=False)
-        if save_mapcoords:
+        index = save_mapcoords not in ["separated", "no"]
+
+        data.to_csv(map_file_path, na_rep="NaN", index=index)
+        if save_mapcoords == "separated":
             mapcoords.to_csv(coord_file_path, na_rep="NaN", index=False)
 
     def export_to_df(
         self,
-        spectral_units: CONVERSION_UNITS | None = None,
+        spectral_units: Units | str | None = None,
         channel: int = 0,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Export the data and mapcoords to DataFrames.
@@ -656,7 +668,7 @@ class Mapping:
 
         Parameters
         ----------
-        spectral_units : {"nm", "cm-1", "eV", "raman_shift"}, optional
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
             Units in which the spectral axis will be exported, by default None
         channel : int, optional
             The channel index to export, by default 0
@@ -666,6 +678,8 @@ class Mapping:
         tuple[pd.DataFrame, pd.DataFrame]
             The data and mapping coordinates as DataFrames.
         """
+        if spectral_units is not None:
+            spectral_units = validate_units(spectral_units)
         spectral_axis = self._to_spectral_units(spectral_units, channel=channel)
 
         mapcoords = _nanofinder_mapcoords(
@@ -677,7 +691,15 @@ class Mapping:
         # starting from the bottom side of the mapping area
         mapcoords = mapcoords.sort_values(by=["y", "x"], ascending=[False, True])
 
-        data = pd.DataFrame(self.data, columns=spectral_axis).reindex(mapcoords.index)
+        # data = pd.DataFrame(self.data, columns=spectral_axis).reindex(mapcoords.index)
+        data = pd.DataFrame(
+            self.data,
+            columns=spectral_axis,
+            index=pd.MultiIndex.from_arrays([mapcoords["x"], mapcoords["y"]]),
+        )
+        # print(data)
+        # print(mapcoords)
+        # quit()
 
         return data, mapcoords
 
@@ -686,9 +708,7 @@ class Mapping:
     #     # Accepts the kind of dataset as an argument, and returns that same kind of dataset
     #     pass
 
-    def _to_spectral_units(
-        self, new_unit: CONVERSION_UNITS | None, channel: int = 0
-    ) -> NDArray[np.float64]:
+    def _to_spectral_units(self, new_unit: Units | None, channel: int = 0) -> NDArray[np.float64]:
         """Convert the spectral units to the given ones.
 
         Parameters
@@ -705,6 +725,8 @@ class Mapping:
         """
         if new_unit is None or self._get_channel_axis_unit(channel) == new_unit:
             return self.get_spectral_axis(channel)
+
+        new_unit = validate_units(new_unit)
 
         return convert_spectral_units(
             self.get_spectral_axis(channel),
