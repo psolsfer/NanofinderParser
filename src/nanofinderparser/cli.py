@@ -11,6 +11,8 @@ from nanofinderparser import load_smd
 from nanofinderparser.units import Units
 from nanofinderparser.utils import SaveMapCoords
 
+# ruff: noqa: UP007 # Using "Optional" as typer doesn't accept "X | Y" notation
+
 app = typer.Typer()
 console = Console()
 
@@ -40,7 +42,7 @@ def convert_smd(
         console.print(f"[green]Successfully converted {file} to {output}[/green]")
     except Exception as e:
         console.print(f"[red]Error converting file: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
 @app.command()
@@ -66,21 +68,22 @@ def info(file: Annotated[Path, typer.Argument(..., help="Path to the SMD file")]
         console.print(table)
     except Exception as e:
         console.print(f"[red]Error reading file: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
 
-# @app.command()
-# def export_smd(
-#     mapping: Annotated[Path, typer.Argument(..., help="Path to the input CSV file")],
-#     output: Annotated[Optional[Path], typer.Option(None, help="Output path for the SMD file")],
-# ) -> None:
-#     """Export a CSV file back to SMD format."""
-#     try:
-#         # TODO: Implement the logic to convert CSV back to SMD
-#         console.print("[yellow]Export to SMD functionality not yet implemented.[/yellow]")
-#     except Exception as e:
-#         console.print(f"[red]Error exporting to SMD: {e}[/red]")
-#         raise typer.Exit(code=1)
+# ??? Is this needed? Conversion back to a SMD is not straightforward
+@app.command()
+def export_smd(
+    mapping: Annotated[Path, typer.Argument(..., help="Path to the input CSV file")],
+    output: Annotated[Optional[Path], typer.Argument(help="Output path for the SMD file")] = None,
+) -> None:
+    """Export a CSV file back to SMD format."""
+    try:
+        # TODO: Implement the logic to convert CSV back to SMD
+        console.print("[yellow]Export to SMD functionality not yet implemented.[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Error exporting to SMD: {e}[/red]")
+        raise typer.Exit(code=1) from e
 
 
 if __name__ == "__main__":

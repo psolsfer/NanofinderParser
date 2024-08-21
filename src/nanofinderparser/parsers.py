@@ -63,6 +63,12 @@ def read_binary_part(
 ) -> Sequence[float]: ...
 
 
+@overload
+def read_binary_part(
+    file: Path, position: int = 0, data_format: str = "f"
+) -> Sequence[float | int | bytes]: ...
+
+
 def read_binary_part(
     file: Path, position: int = 0, data_format: str = "f"
 ) -> Sequence[float | int | bytes]:

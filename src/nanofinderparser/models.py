@@ -9,7 +9,6 @@ import pandas as pd
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# from pydataset.spectraset import SpectraSet
 from nanofinderparser.map import _nanofinder_mapcoords
 from nanofinderparser.units import Units, convert_spectral_units, validate_units
 from nanofinderparser.utils import SaveMapCoords, validate_savemapcoords
@@ -71,18 +70,19 @@ class FrameHeader(VendorVersion, BaseModel):
     @classmethod
     def parse_date(cls, value: str) -> date:
         """To properly parse the date."""
-        return datetime.strptime(value, "%Y/%m/%d").date()
+        year, month, day = map(int, value.split("/"))
+        return date(year, month, day)
 
     @field_validator("time_model", mode="before")
     @classmethod
     def parse_time(cls, value: str) -> time:
         """To properly parse the time."""
-        return datetime.strptime(value, "%H:%M:%S").time()
+        hour, minute, second = map(int, value.split(":"))
+        return time(hour, minute, second)
 
     @property
     def datetime(self) -> datetime:
         """Date and time of the measurement."""
-        # ??? Change the format, as in datetime.strptime(date + " " + time, "%Y/%m/%d %H:%M:%S").replace(tzinfo=timezone.utc)?
         return datetime.combine(self.date_model, self.time_model)
 
 
@@ -277,7 +277,7 @@ class Channel(BaseModel):
         The unit of the channel axis.
     channel_axis_laser_wl : float
         The laser wavelength for the channel axis.
-    channel_axis_array : List[float]
+    channel_axis_array : NDArray[np.float64]
         The array of channel axis values.
     """
 
@@ -297,7 +297,7 @@ class Channel(BaseModel):
     channel_axis_laser_wl: float = Field(
         alias="ChannelAxisLaserWl"
     )  # IMPORTANT Wavelength excitation
-    channel_axis_array: NDArray = Field(
+    channel_axis_array: NDArray[np.float64] = Field(
         alias="ChannelAxisArray"
     )  # IMPORTANT # Spectral axis, with units given by ChannelAxisUnit
 
@@ -305,14 +305,15 @@ class Channel(BaseModel):
 
     @field_validator("channel_axis_array", mode="before")
     @classmethod
-    def parse_chanelaxisarray(cls, value: str) -> NDArray[NPDtype_co]:
+    def parse_chanelaxisarray(cls, value: str) -> NDArray[np.float64]:
         """Properly parse the ChannelAxisArray."""
         return np.fromstring(value, sep=" ")
 
     @field_validator("channel_info", mode="before")
     @classmethod
     def parse_channel_info(cls, value: dict[str, str]) -> ChannelInfo:
-        info_dict = {}
+        """Parse the ChannelInfo element."""
+        info_dict: dict[str, Any] = {}
         for v in value.values():
             if "Temperature" in v:
                 info_dict["temperature"] = float(v.split("=")[1].strip())
@@ -416,7 +417,9 @@ class Mapping:
         Reshape the data as the mapping: (x, y, spectrum) for the given channel.
     _get_channel_axis_unit(channel: int = 0)
         Get the units of the spectral axis for the given channel.
-    export_to_csv(path: Path = Path(), filename: str = "", spectral_units: Units | str | None = None, save_mapcoords: bool = False, channel: int = 0)
+    export_to_csv(path: Path = Path(), filename: str = "",
+            spectral_units: Units | str | None = None,
+            save_mapcoords: bool = False, channel: int = 0)
         Export the data to csv files.
     export_to_df(spectral_units: Units | str | None = None, channel: int = 0)
         Export the data and mapcoords to DataFrames.
@@ -467,9 +470,9 @@ class Mapping:
         # FIXME This won't handle the case when there are more than one channel.
         # Need a SMD file with several channels to inspect it and implement handling multichannels.
         channel = 0
-        self._data = value_array.reshape(-1, self.get_spectral_axis_len(channel=0))
+        self._data = value_array.reshape(-1, self.get_spectral_axis_len(channel=channel))
 
-    def get_spectral_axis(self, channel: int = 0) -> NDArray[NPDtype_co]:
+    def get_spectral_axis(self, channel: int = 0) -> NDArray[np.float64]:
         """Get the spectral axis for the given channel.
 
         Parameters
@@ -479,7 +482,7 @@ class Mapping:
 
         Returns
         -------
-        NDArray[NPDtype_co]
+        NDArray[np.float64]
             Array containing the spectral axis for the given channel.
         """
         channel_obj = self.scanned_frame_parameters.data_calibration.channels[channel]
@@ -571,7 +574,11 @@ class Mapping:
     @property
     def map_size(self) -> tuple[float, float, float]:
         """Size of the map in the (x,y,z) axes, with the corresponding units for each axis."""
-        return tuple(x * (y - 1) for x, y in zip(self.step_size, self.map_steps, strict=True))
+        return (
+            self.step_size[0] * (self.map_steps[0] - 1),
+            self.step_size[1] * (self.map_steps[1] - 1),
+            self.step_size[2] * (self.map_steps[2] - 1),
+        )
 
     def _get_data_to_map(self, channel: int = 0) -> NDArray[NPDtype_co]:
         """Reshapes the data as the mapping: (x, y, spectrum)."""
@@ -682,31 +689,22 @@ class Mapping:
             spectral_units = validate_units(spectral_units)
         spectral_axis = self._to_spectral_units(spectral_units, channel=channel)
 
-        mapcoords = _nanofinder_mapcoords(
-            self.map_steps[0], self.map_steps[1]
-        )  # FIXME Doesn't work for Z-axis
+        # FIXME Line below doesn't work for Z-axis...
+        mapcoords = _nanofinder_mapcoords(self.map_steps[0], self.map_steps[1])
+        # ... actually, this method won't work for 3D maps (with x, y and z)
 
         # Reordering the rows
         # NOTE: this is not essential, only done to coincide with NanoFinder's convention of 'y'
         # starting from the bottom side of the mapping area
         mapcoords = mapcoords.sort_values(by=["y", "x"], ascending=[False, True])
 
-        # data = pd.DataFrame(self.data, columns=spectral_axis).reindex(mapcoords.index)
         data = pd.DataFrame(
             self.data,
             columns=spectral_axis,
             index=pd.MultiIndex.from_arrays([mapcoords["x"], mapcoords["y"]]),
         )
-        # print(data)
-        # print(mapcoords)
-        # quit()
 
         return data, mapcoords
-
-    # def export_to_dataset(self, dataset_kind=SpectraSet) -> SpectraSet:
-    #     # TODO # ISSUE #50 Export the Mapping to a dataset
-    #     # Accepts the kind of dataset as an argument, and returns that same kind of dataset
-    #     pass
 
     def _to_spectral_units(self, new_unit: Units | None, channel: int = 0) -> NDArray[np.float64]:
         """Convert the spectral units to the given ones.

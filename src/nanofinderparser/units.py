@@ -1,8 +1,5 @@
-# ISSUE #14 # TODO Handle units
+"""Handling conversion of units."""
 
-# Add just 'nm', 'eV' and 'cm-1' and convert between them the spectral axis
-# ALSO NEEDS TO CHANGE THE column names of data/processed data/baseline/fit...
-# OTHER THAN THE SPECTRAL AXIS, needs to change the spectral range in the dataset...
 import logging
 from enum import Enum
 from typing import Any, TypeVar, overload
@@ -16,6 +13,8 @@ FloatOrArray = TypeVar("FloatOrArray", float, NDArray[np.float64])
 
 
 class Units(str, Enum):
+    """Valid units."""
+
     nm = "nm"
     cm_1 = "cm_1"
     ev = "eV"
@@ -42,15 +41,19 @@ def validate_units(units: Units | str | Any) -> Units:
     """
     if isinstance(units, str):
         try:
-            return Units(units.lower())
+            units_enum: Units = getattr(Units, units.lower())
         except ValueError as err:
-            raise ValueError(
-                f"Invalid units value: {units}. " f"Must be one of {', '.join(Units.__members__)}"
-            ) from err
+            error_message = (
+                f"Invalid units value: {units}. Must be one of {', '.join(Units.__members__)}"
+            )
+            raise ValueError(error_message) from err
+        else:
+            return units_enum
     elif isinstance(units, Units):
         return units
     else:
-        raise TypeError(f"Invalid type for units: {type(units)}. " f"Must be Units enum or str.")
+        error_message = f"Invalid type for units: {type(units)}. Must be Units enum or str."
+        raise TypeError(error_message)
 
 
 def setup_spectroscopy_constants(
@@ -72,15 +75,11 @@ def setup_spectroscopy_constants(
     registry.enable_contexts("spectroscopy")
 
     units_dict: dict[str, Unit] = {
-        "nm": registry.nm,
-        "cm_1": 1 / registry.cm,
-        "raman_shift": 1 / registry.cm,
-        "eV": registry.eV,
+        "nm": registry.nm,  # type: ignore[dict-item]
+        "cm_1": (1 / registry.cm).units,
+        "raman_shift": (1 / registry.cm).units,
+        "eV": registry.eV,  # type: ignore[dict-item]
     }
-
-    # h = registry.planck_constant
-    # c = registry.speed_of_light
-    # hc = h * c
 
     return units_dict
 
@@ -148,37 +147,43 @@ def convert_spectral_units(
 
     # Uses the registry from any given Quantity
     if isinstance(value, Quantity):
-        registry = value._REGISTRY
+        registry = value._REGISTRY  # noqa: SLF001
     elif isinstance(laser_wavelength_nm, Quantity):
-        registry = laser_wavelength_nm._REGISTRY
+        registry = laser_wavelength_nm._REGISTRY  # noqa: SLF001
     else:
         registry = UnitRegistry()
 
     units_dict = setup_spectroscopy_constants(registry)
 
-    if not isinstance(laser_wavelength_nm, Quantity):
-        laser_wavelength_nm = laser_wavelength_nm * registry.nm
+    laser_wavelength_quantity: Quantity = (
+        laser_wavelength_nm * registry.nm
+        if not isinstance(laser_wavelength_nm, Quantity)
+        else laser_wavelength_nm
+    )
 
-    input_is_quantity = isinstance(value, Quantity)
-    if not input_is_quantity:
+    if not isinstance(value, Quantity):
         try:
-            value = value * units_dict[unit_in]
+            value_quantity: Quantity = value * units_dict[unit_in]
         except KeyError:
             msg = f"Invalid input unit: {unit_in}"
             raise ValueError(msg) from KeyError
+    else:
+        value_quantity = value
 
     # TODO Try to implement this conversion in a pint's context in which the laser wavelength is
     # passed https://pint.readthedocs.io/en/0.23/user/contexts.html#working-without-a-default-definition
     if unit_in == "raman_shift":
         # Raman shift to cm-1
-        value = laser_wavelength_nm.to(registry.cm**-1) - value
+        value_quantity = laser_wavelength_quantity.to(registry.cm**-1) - value_quantity
 
     if unit_out == "raman_shift":
-        converted_value = laser_wavelength_nm.to(registry.cm**-1) - value.to(registry.cm**-1)
+        converted_value: Quantity = laser_wavelength_quantity.to(
+            registry.cm**-1
+        ) - value_quantity.to(registry.cm**-1)
     else:
-        converted_value = value.to(unit_out)
+        converted_value = value_quantity.to(unit_out)
 
-    if not input_is_quantity:
+    if not isinstance(value, Quantity):
         converted_value = converted_value.magnitude
 
     return converted_value

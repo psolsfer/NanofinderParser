@@ -43,16 +43,18 @@ def validate_savemapcoords(savemapcoords: SaveMapCoords | str | Any) -> SaveMapC
         try:
             return SaveMapCoords(savemapcoords.lower())
         except ValueError as err:
-            raise ValueError(
+            error_msg = (
                 f"Invalid value: {savemapcoords}. "
-                f"Must be one of {', '.join(SaveMapCoords.__members__)}"
-            ) from err
+                "Must be one of {', '.join(SaveMapCoords.__members__)}"
+            )
+            raise ValueError(error_msg) from err
     elif isinstance(savemapcoords, SaveMapCoords):
         return savemapcoords
     else:
-        raise TypeError(
+        error_msg = (
             f"Invalid type for units: {type(savemapcoords)}. " f"Must be SaveMapCoords enum or str."
         )
+        raise TypeError(error_msg)
 
 
 def get_nested_dict_value(data: dict[str, Any], keys: str) -> Any:
