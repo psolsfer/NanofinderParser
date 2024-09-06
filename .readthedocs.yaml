@@ -20,6 +20,10 @@ build:
             # Install dependencies with 'docs' dependency group
             # https://python-poetry.org/docs/managing-dependencies/#dependency-groups
             - poetry install --with docs
+    commands:
+        # Run mkdocs build after installation
+        - poetry run mkdocs build --clean --site-dir $READTHEDOCS_OUTPUT/html --config-file mkdocs.yml
+
 
 # Build documentation in the docs/ directory with MkDocs
 mkdocs:
