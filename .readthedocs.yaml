@@ -9,19 +9,13 @@ build:
     os: ubuntu-22.04
     tools:
         python: "3.12"
-    jobs:
-        post_create_environment:
-            # Install poetry
-            # https://python-poetry.org/docs/#installing-manually
-            - pip install poetry
-            # Tell poetry to not use a virtual environment
-            - poetry config virtualenvs.create false
-        post_install:
-            # Install dependencies with 'docs' dependency group
-            # https://python-poetry.org/docs/managing-dependencies/#dependency-groups
-            - poetry install --with docs
     commands:
-        # Run mkdocs build after installation
+        # Install Poetry and configure it to not use virtual environments
+        - pip install poetry
+        - poetry config virtualenvs.create false
+        # Install all dependencies including mkdocs and mkdocs-material
+        - poetry install --with docs
+        # Build the documentation with mkdocs
         - poetry run mkdocs build --clean --site-dir $READTHEDOCS_OUTPUT/html --config-file mkdocs.yml
 
 
