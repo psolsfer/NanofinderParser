@@ -417,11 +417,11 @@ class Mapping:
         Reshape the data as the mapping: (x, y, spectrum) for the given channel.
     _get_channel_axis_unit(channel: int = 0)
         Get the units of the spectral axis for the given channel.
-    export_to_csv(path: Path = Path(), filename: str = "",
+    to_csv(path: Path = Path(), filename: str = "",
             spectral_units: Units | str | None = None,
             save_mapcoords: bool = False, channel: int = 0)
         Export the data to csv files.
-    export_to_df(spectral_units: Units | str | None = None, channel: int = 0)
+    to_df(spectral_units: Units | str | None = None, channel: int = 0)
         Export the data and mapcoords to DataFrames.
 
     Notes
@@ -472,21 +472,38 @@ class Mapping:
         channel = 0
         self._data = value_array.reshape(-1, self.get_spectral_axis_len(channel=channel))
 
-    def get_spectral_axis(self, channel: int = 0) -> NDArray[np.float64]:
-        """Get the spectral axis for the given channel.
+    def get_spectral_axis(
+        self,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+        channel: int = 0,
+    ) -> NDArray[np.float64]:
+        """Get the spectral axis for the given channel, optionally converting to specified units.
 
         Parameters
         ----------
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            The units to convert the spectral axis to. If None, returns the original units.
         channel : int, optional
             The channel index, by default 0
 
         Returns
         -------
         NDArray[np.float64]
-            Array containing the spectral axis for the given channel.
+            Array containing the spectral axis for the given channel, in the specified units.
         """
-        channel_obj = self.scanned_frame_parameters.data_calibration.channels[channel]
-        return channel_obj.channel_axis_array
+        raw_axis = self._get_raw_spectral_axis(channel)
+        current_units = self._get_channel_axis_unit(channel)
+        if spectral_units is None or current_units == spectral_units:
+            return raw_axis
+
+        new_unit = validate_units(spectral_units)
+
+        return convert_spectral_units(
+            raw_axis,
+            self._get_channel_axis_unit(channel),
+            new_unit,
+            laser_wavelength_nm=self.laser_wavelength,
+        )
 
     def get_spectral_axis_len(self, channel: int = 0) -> int:
         """Get the number of data points of each spectrum for the given channel.
@@ -503,6 +520,22 @@ class Mapping:
         """
         channel_obj = self.scanned_frame_parameters.data_calibration.channels[channel]
         return channel_obj.channel_size
+
+    def _get_raw_spectral_axis(self, channel: int = 0) -> NDArray[np.float64]:
+        """Get the raw spectral axis for the given channel without unit conversion.
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Array containing the raw spectral axis for the given channel.
+        """
+        channel_obj = self.scanned_frame_parameters.data_calibration.channels[channel]
+        return channel_obj.channel_axis_array
 
     def get_exposure_time(self, channel: int = 0) -> float | None:
         """Get the exposure time the given channel.
@@ -602,11 +635,11 @@ class Mapping:
         channel_obj = self.scanned_frame_parameters.data_calibration.channels[channel]
         return channel_obj.channel_axis_unit
 
-    def export_to_csv(
+    def to_csv(
         self,
         path: Path = Path(),
         filename: str = "",
-        spectral_units: Units | str | None = None,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
         save_mapcoords: SaveMapCoords | str = SaveMapCoords.combined,
         channel: int = 0,
     ) -> None:
@@ -641,7 +674,7 @@ class Mapping:
         if spectral_units is not None:
             spectral_units = validate_units(spectral_units)
 
-        data, mapcoords = self.export_to_df(spectral_units, channel=channel)
+        data, mapcoords = self.to_df(spectral_units, channel=channel)
 
         if not filename:
             map_file_path = path / "data.csv"
@@ -660,9 +693,9 @@ class Mapping:
         if save_mapcoords == "separated":
             mapcoords.to_csv(coord_file_path, na_rep="NaN", index=False)
 
-    def export_to_df(
+    def to_df(
         self,
-        spectral_units: Units | str | None = None,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
         channel: int = 0,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Export the data and mapcoords to DataFrames.
@@ -685,9 +718,7 @@ class Mapping:
         tuple[pd.DataFrame, pd.DataFrame]
             The data and mapping coordinates as DataFrames.
         """
-        if spectral_units is not None:
-            spectral_units = validate_units(spectral_units)
-        spectral_axis = self._to_spectral_units(spectral_units, channel=channel)
+        spectral_axis = self.get_spectral_axis(spectral_units=spectral_units, channel=channel)
 
         # FIXME Line below doesn't work for Z-axis...
         mapcoords = _nanofinder_mapcoords(self.map_steps[0], self.map_steps[1])
@@ -705,30 +736,3 @@ class Mapping:
         )
 
         return data, mapcoords
-
-    def _to_spectral_units(self, new_unit: Units | None, channel: int = 0) -> NDArray[np.float64]:
-        """Convert the spectral units to the given ones.
-
-        Parameters
-        ----------
-        new_unit : {"nm", "cm-1", "eV", "raman_shift"}
-            The units to convert the spectral axis.
-        channel : int, optional
-            The channel index, by default 0
-
-        Returns
-        -------
-        NDArray[np.float64]
-            The converted spectral axis
-        """
-        if new_unit is None or self._get_channel_axis_unit(channel) == new_unit:
-            return self.get_spectral_axis(channel)
-
-        new_unit = validate_units(new_unit)
-
-        return convert_spectral_units(
-            self.get_spectral_axis(channel),
-            self._get_channel_axis_unit(channel),
-            new_unit,
-            laser_wavelength_nm=self.laser_wavelength,
-        )

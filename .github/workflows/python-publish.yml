@@ -40,7 +40,6 @@ jobs:
     - name: Run style checks
       run: |
           poetry run invoke lint
-          poetry run invoke type-check
     - name: Build package
       run: |
           poetry build

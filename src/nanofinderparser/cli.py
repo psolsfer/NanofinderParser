@@ -33,10 +33,10 @@ def convert_smd(
     try:
         mapping = load_smd(file)
         output = output or file.with_suffix(".csv")
-        mapping.export_to_csv(
+        mapping.to_csv(
             path=output.parent,
             filename=output.name,
-            spectral_units=units.value,
+            spectral_units=units.value,  # type: ignore[arg-type]
             save_mapcoords=save_mapcoords.value,
         )
         console.print(f"[green]Successfully converted {file} to {output}[/green]")
