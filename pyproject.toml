@@ -83,10 +83,10 @@ pre-commit = ">=3.3.1"
 ruff = ">=0.3"
 safety = ">=2.3.4, !=2.3.5"
 typeguard = ">=4.1.5"
-commitizen = ">=3.10"
+commitizen = ">=3.29"
 
 [tool.poetry.group.test.dependencies]  # https://python-poetry.org/docs/master/managing-dependencies/
-commitizen = ">=3.10"
+commitizen = ">=3.29"
 coverage = { extras = ["toml"], version = ">=7.3.1" }
 mypy = ">=1.6.0"
 pre-commit = ">=3.3.1"
