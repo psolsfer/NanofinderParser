@@ -1,3 +1,13 @@
+## v0.2.2 (2024-09-12)
+
+### Feat
+
+- **cli.py**: improve the cli
+
+### Fix
+
+- **models**: fix parsing of channel info
+
 ## v0.2.1 (2024-09-12)
 
 ## v0.2.0 (2024-09-12)
