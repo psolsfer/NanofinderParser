@@ -316,15 +316,15 @@ class Channel(BaseModel):
         info_dict: dict[str, Any] = {}
         for v in value.values():
             if "Temperature" in v:
-                info_dict["temperature"] = float(v.split("=")[1].strip())
+                info_dict["Temperature"] = float(v.split("=")[1].strip())
             elif "Exposure time" in v:
-                info_dict["exposure_time"] = float(v.split("=")[1].strip().split()[0])
-                info_dict["cycle_time"] = float(v.split("=")[2].strip())
+                info_dict["ExposureTime"] = float(v.split("=")[1].strip().split()[0])
+                info_dict["CycleTime"] = float(v.split("=")[2].strip())
             elif "Acquisition mode" in v:
                 mode_info = v.split(":")[1].strip().split(".")
-                info_dict["acquisition_mode"] = mode_info[0].strip().lower()
-                if info_dict["acquisition_mode"] in ["accomulate", "accumulate"]:
-                    info_dict["accumulation_number"] = int(mode_info[1].split("=")[1].strip())
+                info_dict["AcquisitionMode"] = mode_info[0].strip().lower()
+                if info_dict["AcquisitionMode"] in ["accomulate", "accumulate"]:
+                    info_dict["AccumulationNumber"] = int(mode_info[1].split("=")[1].strip())
         return ChannelInfo(**info_dict)
 
 
