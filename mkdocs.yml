@@ -3,6 +3,7 @@ repo_url: https://github.com/psolsfer/NanofinderParser
 repo_name: NanofinderParser
 
 site_dir: site
+use_directory_urls: true
 
 theme:
     name: material
@@ -75,13 +76,22 @@ plugins:
                   options:
                       # Headings
                       show_root_heading: true
-                      show_root_full_path: false
+                    #   show_root_full_path: false
                       # Docstrings
-                      show_if_no_docstring: true
-                      # Signatures/annotations
-                      show_signature_annotations: true
+                    #   show_if_no_docstring: true
+                    #   # Signatures/annotations
+                    #   show_signature_annotations: true
                       # Other
                       show_bases: false
+                      
+                      show_source: false
+                      heading_level: 2
+                      inherited_members: true
+                      docstring_style: numpy
+                      show_root_toc_entry: true
+                      show_category_heading: true
+                      show_submodules: false
+                      
     - awesome-pages
     - search:
           lang: en
@@ -95,10 +105,11 @@ extra:
         - icon: material/email
           link: "mailto:psolsfer@gmail.com"
 
-nav:
-  - Home: index.md
-  - Usage: usage.md
-  - API Reference:
-    - Models: api/models.md
-    - Parsers: api/parsers.md
-    - Units: api/units.md
+# nav:
+#   - Home: index.md
+#   - Usage: usage.md
+#   - API Reference:
+#     - Models: api/models.md
+#     - Parsers: api/parsers.md
+#     - Units: api/units.md
+#   - Authors: authors.md

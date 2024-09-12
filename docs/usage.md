@@ -12,9 +12,9 @@ You can install NanoFinderParser using pip:
 pip install nanofinderparser
 ```
 
-## Basic Usage
+## Basic usage
 
-### Loading an SMD File
+### Loading an SMD file
 
 To load an SMD file, use the `load_smd` function:
 
@@ -23,38 +23,40 @@ from pathlib import Path
 from nanofinderparser import load_smd
 
 file_path = Path("path/to/your/smd/file.smd")
-mapping_data = load_smd(file_path)
+mapping = load_smd(file_path)
 ```
 
-### Loading Multiple SMD Files from a Folder
+### Loading multiple SMD files from a folder
 
 To load multiple SMD files from a folder, use the `load_smd_folder` function:
+
 ```python
 from pathlib import Path
 from nanofinderparser import load_smd_folder
 
 folder_path = Path("path/to/your/smd/files/folder")
 for mapping in load_smd_folder(folder_path):
+    # The loaded file is stored in 'mapping', and it's possible to access its properties
     data = mapping.data
 ```
 
-### Accessing Parsed Data
+### Accessing parsed data
 
 Once you have loaded the SMD file, you can access various parts of the data through the `Mapping` object:
 
 ```python
-# Access basic information
-print(f"Exposure time: {mapping_data.get_exposure_time()}")
-print(f"Laser power: {mapping_data.laser_power} mW")
-print(f"Laser wavelength: {mapping_data.laser_wavelength_nm} nm")
-
-print(f"Measurement date and time: {mapping_data.datetime}")
-
-
+# Access basic information of the mapping
+print(f"Exposure time: {mapping.get_exposure_time()}")
+print(f"Laser power: {mapping.laser_power} mW")
+print(f"Laser wavelength: {mapping.laser_wavelength_nm} nm")
+print(f"Measurement date and time: {mapping.datetime}")
 
 # Access the actual mapping data
-print(f"Number of data points: {len(mapping_data.data)}")
-print(f"Spectral axis: {mapping_data.get_spectral_axis()}")
+data = mapping.data
+# and spectral axis (in the specified units)
+spectral_axis = mapping.get_spectral_axis("eV")
+print(f"Number of data points: {len(data)}")
+print(f"Spectral axis (eV): {spectral_axis}")
 ```
 
 !!! important
@@ -65,27 +67,27 @@ print(f"Spectral axis: {mapping_data.get_spectral_axis()}")
     Currently, some methods that accept a 'channel' parameter that defaults to 'channel = 0'. At present, we don't have SMD files with multiple channels, so it's not yet clear how to handle them properly.
     Until we encounter multi-channel SMD files, it's recommended to keep using 'channel = 0' for all operations.
 
-### Exporting Data
+### Exporting data
 
 To export the loaded data, you can use the exporting methods of `Mapping`
 
 ```python
-# Export as csv files
-mapping_data.export_to_csv(path=Path("path/to/output/file"), spectral_units="raman_shift")
+# Export the data as csv files in the specified units
+mapping.to_csv(path=Path("path/to/output/file"), spectral_units="raman_shift")
 
-# Export to pandas DataFrames
-data, map_coords = mapping_data.export_to_df(spectral_units="eV")
+# Export the data to pandas DataFrames
+data, map_coords = mapping_data.to_df(spectral_units="eV")
 ```
 
 When exporting, it's possible to specify the units from ["nm", "cm-1", "eV", "raman_shift"].
 
-When exporting to a .csv file, is possible to also export the coordinates of the mapping.
+When exporting to a .csv file, is possible to also export the coordinates of the mapping with the 'save_mapcoords' argument. By default, the coordinates will be saved to the same .csv file.
 
 Note that NanoFinder's coordinates follow the convention of 'y' starting from the bottom of the mapping area.
 
-## Advanced Usage
+## Advanced usage
 
-### Converting Spectral Units
+### Converting spectral units
 
 You can convert spectral data between different units using the `convert_spectral_units` function:
 
