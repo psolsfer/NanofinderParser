@@ -33,7 +33,7 @@ poetry add nanofinderparser
 
 ## Quick Start
 
-Here's a simple example of how to use NanofinderParser:
+Here's a simple example of how to use NanofinderParser in python:
 
 ```python
 from pathlib import Path
@@ -49,6 +49,16 @@ print(f"Map size: {mapping_data.map_size}")
 
 # Export data to CSV
 mapping_data.to_csv(path=Path("output"), spectral_units="raman_shift")
+```
+
+You can also use NanofinderParser from the command line:
+
+```shell
+# Convert an SMD file to CSV
+nanofinderparser convert path/to/your/smd/file.smd output_folder --units nm
+
+# Display information about an SMD file
+nanofinderparser info path/to/your/smd/file.smd
 ```
 
 For more detailed usage instructions, please refer to the [documentation](https://nanofinderparser.readthedocs.io/).

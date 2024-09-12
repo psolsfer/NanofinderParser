@@ -85,6 +85,41 @@ When exporting to a .csv file, is possible to also export the coordinates of the
 
 Note that NanoFinder's coordinates follow the convention of 'y' starting from the bottom of the mapping area.
 
+### CLI usage
+
+The NanofinderParser package provides a command-line interface (CLI) for easy conversion of SMD files to CSV format and for displaying information about SMD files.
+
+#### Converting SMD files to CSV
+
+You can convert SMD files to CSV directly from the command line:
+```shell
+nanofinderparser convert input_file.smd [output_folder]
+```
+
+- If the output folder is not specified, the CSV file will be saved in the same directory as the input file.
+- If the input is a directory, all SMD files in that directory will be converted.
+
+Options:
+
+- --units: Specify the units for the spectral axis (default: raman_shift)
+- --save-mapcoords: Specify how to save mapping coordinates (default: combined)
+
+Example:
+
+```shell
+nanofinderparser convert mapping_file.smd output_folder --units nm --save-mapcoords separated
+```
+
+#### Displaying SMD file information
+
+To display information about an SMD file:
+
+```shell
+nanofinderparser info mapping_file.smd
+```
+
+This command will show details such as the laser wavelength and power, exposure time, map and step size, ...
+
 ## Advanced usage
 
 ### Converting spectral units
