@@ -696,6 +696,7 @@ class Mapping:
     def to_df(
         self,
         spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+        index: Literal["mapcoords", False] = "mapcoords",
         channel: int = 0,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Export the data and mapcoords to DataFrames.
@@ -712,6 +713,8 @@ class Mapping:
             Units in which the spectral axis will be exported, by default None
         channel : int, optional
             The channel index to export, by default 0
+        index : Literal["mapcoords", False], optional
+            Use the mapping coordinates as index of the df, by default "mapcoords"
 
         Returns
         -------
@@ -734,5 +737,7 @@ class Mapping:
             columns=spectral_axis,
             index=pd.MultiIndex.from_arrays([mapcoords["x"], mapcoords["y"]]),
         )
+        if not index:
+            data = data.reset_index(drop=True)
 
         return data, mapcoords
