@@ -2,7 +2,7 @@
 
 __author__ = """Pablo Solís-Fernández"""
 __email__ = "psolsfer@gmail.com"
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from nanofinderparser.load import load_smd, load_smd_folder
 

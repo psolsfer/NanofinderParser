@@ -1,3 +1,9 @@
+## v0.3.1 (2024-10-02)
+
+### Fix
+
+- **units.py**: fix bug in the conversion to and from "cm-1"
+
 ## v0.3.0 (2024-10-02)
 
 ### Feat
