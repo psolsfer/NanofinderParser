@@ -16,9 +16,22 @@ class Units(str, Enum):
     """Valid units."""
 
     nm = "nm"
-    cm_1 = "cm_1"
+    cm_1 = "cm-1"
     ev = "eV"
     raman_shift = "raman_shift"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "Units | None":
+        """Handle a value that doesn't match any enum member."""
+        if isinstance(value, str):
+            # Handle the case where the input is "cm-1"
+            if value.lower() == "cm-1":
+                return cls.cm_1
+            # Try to match the lowercase version of the input
+            for member in cls:
+                if member.value.lower() == value.lower():
+                    return member
+        return None
 
 
 def validate_units(units: Units | str | Any) -> Units:
@@ -41,14 +54,12 @@ def validate_units(units: Units | str | Any) -> Units:
     """
     if isinstance(units, str):
         try:
-            units_enum: Units = getattr(Units, units.lower())
-        except ValueError as err:
+            return Units(units)
+        except AttributeError as err:
             error_message = (
                 f"Invalid units value: {units}. Must be one of {', '.join(Units.__members__)}"
             )
             raise ValueError(error_message) from err
-        else:
-            return units_enum
     elif isinstance(units, Units):
         return units
     else:
@@ -75,10 +86,10 @@ def setup_spectroscopy_constants(
     registry.enable_contexts("spectroscopy")
 
     units_dict: dict[str, Unit] = {
-        "nm": registry.nm,  # type: ignore[dict-item]
-        "cm_1": (1 / registry.cm).units,
-        "raman_shift": (1 / registry.cm).units,
-        "eV": registry.eV,  # type: ignore[dict-item]
+        Units.nm.value: registry.nm,  # type: ignore[dict-item]
+        Units.cm_1.value: (1 / registry.cm).units,
+        Units.raman_shift.value: (1 / registry.cm).units,
+        Units.ev.value: registry.eV,  # type: ignore[dict-item]
     }
 
     return units_dict
@@ -115,9 +126,9 @@ def convert_spectral_units(
     ----------
     value : float | np.ndarray | Quantity
         The spectral data to convert.
-    unit_in : {"nm", "cm_1", "eV", "raman_shift"}
+    unit_in : {"nm", "cm-1", "eV", "raman_shift"}
         The unit of the input data.
-    unit_out : {"nm", "cm_1", "eV", "raman_shift"}
+    unit_out : {"nm", "cm-1", "eV", "raman_shift"}
         The unit to convert the data to.
     laser_wavelength_nm : float | Quantity
         The wavelength of the laser, used to properly convert to the Raman shift in cm-1.
@@ -135,7 +146,7 @@ def convert_spectral_units(
     Raises
     ------
     ValueError
-        If `unit_in` or `unit_out` is not one of {"nm", "cm_1", "eV", "raman_shift"}.
+        If `unit_in` or `unit_out` is not one of {"nm", "cm-1", "eV", "raman_shift"}.
     """
     # TODO Raman shift can't be passed as a Quantity
 
@@ -172,16 +183,16 @@ def convert_spectral_units(
 
     # TODO Try to implement this conversion in a pint's context in which the laser wavelength is
     # passed https://pint.readthedocs.io/en/0.23/user/contexts.html#working-without-a-default-definition
-    if unit_in == "raman_shift":
+    if unit_in == Units.raman_shift:
         # Raman shift to cm-1
         value_quantity = laser_wavelength_quantity.to(registry.cm**-1) - value_quantity
 
-    if unit_out == "raman_shift":
+    if unit_out == Units.raman_shift:
         converted_value: Quantity = laser_wavelength_quantity.to(
             registry.cm**-1
         ) - value_quantity.to(registry.cm**-1)
     else:
-        converted_value = value_quantity.to(unit_out)  # type: ignore[assignment]
+        converted_value = value_quantity.to(units_dict[unit_out.value])  # type: ignore[assignment]
 
     if not isinstance(value, Quantity):
         converted_value = converted_value.magnitude

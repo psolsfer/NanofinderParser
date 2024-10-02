@@ -67,7 +67,7 @@ def convert_smd(
                 mapping.to_csv(
                     path=output_dir,
                     filename=output_file.name,
-                    spectral_units=units.value,  # type: ignore[arg-type]
+                    spectral_units=units.value,
                     save_mapcoords=save_mapcoords.value,
                 )
                 progress.update(task, advance=1)
