@@ -2,7 +2,7 @@
 
 import logging
 from enum import Enum
-from typing import Any, TypeVar, overload
+from typing import Any, TypeVar, cast, overload
 
 import numpy as np
 from numpy.typing import NDArray
@@ -10,6 +10,8 @@ from pint import Quantity, Unit, UnitRegistry
 
 logger = logging.getLogger(__name__)
 FloatOrArray = TypeVar("FloatOrArray", float, NDArray[np.float64])
+
+Q = TypeVar("Q", bound=Quantity)
 
 
 class Units(str, Enum):
@@ -24,8 +26,8 @@ class Units(str, Enum):
     def _missing_(cls, value: object) -> "Units | None":
         """Handle a value that doesn't match any enum member."""
         if isinstance(value, str):
-            # Handle the case where the input is "cm-1"
-            if value.lower() == "cm-1":
+            # Handle the case where the input is "cm-1" or "cm_1"
+            if value.lower() in ["cm-1", "cm_1"]:
                 return cls.cm_1
             # Try to match the lowercase version of the input
             for member in cls:
@@ -106,20 +108,20 @@ def convert_spectral_units(
 
 @overload
 def convert_spectral_units(
-    value: Quantity,
+    value: Q,
     unit_in: Units
     | str,  # FIXME Could be inferred from 'value' (value.units) but not for raman_shift...
     unit_out: Units | str,
     laser_wavelength_nm: float | Quantity = 532.000006769476,
-) -> Quantity: ...
+) -> Q: ...
 
 
 def convert_spectral_units(
-    value: FloatOrArray | Quantity,
+    value: FloatOrArray | Q,
     unit_in: Units | str,
     unit_out: Units | str,
     laser_wavelength_nm: float | Quantity = 532.000006769476,
-) -> FloatOrArray | Quantity:
+) -> FloatOrArray | Q:
     """Convert spectral data between different units.
 
     Parameters
@@ -188,13 +190,14 @@ def convert_spectral_units(
         value_quantity = laser_wavelength_quantity.to(registry.cm**-1) - value_quantity
 
     if unit_out == Units.raman_shift:
-        converted_value: Quantity = laser_wavelength_quantity.to(
+        converted_value = laser_wavelength_quantity.to(registry.cm**-1) - value_quantity.to(
             registry.cm**-1
-        ) - value_quantity.to(registry.cm**-1)
+        )
     else:
-        converted_value = value_quantity.to(units_dict[unit_out.value])  # type: ignore[assignment]
+        converted_value = value_quantity.to(units_dict[unit_out.value])
 
     if not isinstance(value, Quantity):
-        converted_value = converted_value.magnitude
+        converted_as_float_array: FloatOrArray = converted_value.magnitude
+        return converted_as_float_array
 
-    return converted_value
+    return cast(Q, converted_value)
