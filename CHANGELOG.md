@@ -1,3 +1,9 @@
+## v0.3.0 (2024-10-02)
+
+### Feat
+
+- **Mapping.to_df**: add control of the index in the created df
+
 ## v0.2.2 (2024-09-12)
 
 ### Feat
