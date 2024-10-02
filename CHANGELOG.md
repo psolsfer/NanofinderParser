@@ -1,3 +1,9 @@
+## v0.3.2 (2024-10-02)
+
+### Refactor
+
+- **units.py**: improve the static typing of the unit conversion
+
 ## v0.3.1 (2024-10-02)
 
 ### Fix
