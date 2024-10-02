@@ -19,18 +19,8 @@ classifiers = [     # Pypi classifiers: https://pypi.org/classifiers/
 ]
 packages = [
     { include = "nanofinderparser", from = "src" },
-    { include = "tests", format = "sdist" },
 ]
-include = [
-    "AUTHORS.md",
-    "CONTRIBUTING.md",
-    "HISTORY.md",
-    "LICENSE",
-    "py.typed",
-    "README.md",
-    "tests/**/*",
-    "docs/**/*.{md,py,jpg,png,gif}",
-]
+include = []
 exclude = [
     "**/__pycache__",
     "**/*.py[co]",
