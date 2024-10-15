@@ -1,3 +1,9 @@
+## v0.3.3 (2024-10-15)
+
+### Fix
+
+- **models.Mapping**: fix bug with the indexes of the dataframes exported by .to_df
+
 ## v0.3.2 (2024-10-02)
 
 ### Refactor
