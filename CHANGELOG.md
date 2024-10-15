@@ -1,3 +1,9 @@
+## v0.3.4 (2024-10-15)
+
+### Fix
+
+- **models.Mapping**: Fix the index of mapcoords outputted by Mapping.to_df
+
 ## v0.3.3 (2024-10-15)
 
 ### Fix
