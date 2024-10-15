@@ -740,7 +740,7 @@ class Mapping:
         mapcoords = mapcoords.sort_values(by=["y", "x"], ascending=[False, True])
         data = data.reindex(mapcoords.set_index(["x", "y"]).index)
 
-        mapcoords.reset_index(drop=True)
+        mapcoords = mapcoords.reset_index(drop=True)
         if not index:
             data = data.reset_index(drop=True)
 
