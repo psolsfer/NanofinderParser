@@ -689,6 +689,7 @@ class Mapping:
 
         index = save_mapcoords not in ["separated", "no"]
 
+        path.mkdir(parents=True, exist_ok=True)
         data.to_csv(map_file_path, na_rep="NaN", index=index)
         if save_mapcoords == "separated":
             mapcoords.to_csv(coord_file_path, na_rep="NaN", index=False)
@@ -727,16 +728,19 @@ class Mapping:
         mapcoords = _nanofinder_mapcoords(self.map_steps[0], self.map_steps[1])
         # ... actually, this method won't work for 3D maps (with x, y and z)
 
-        # Reordering the rows
-        # NOTE: this is not essential, only done to coincide with NanoFinder's convention of 'y'
-        # starting from the bottom side of the mapping area
-        mapcoords = mapcoords.sort_values(by=["y", "x"], ascending=[False, True])
-
         data = pd.DataFrame(
             self.data,
             columns=spectral_axis,
             index=pd.MultiIndex.from_arrays([mapcoords["x"], mapcoords["y"]]),
         )
+
+        # Reordering the rows
+        # NOTE: this is not essential, only done to coincide with NanoFinder's convention of 'y'
+        # starting from the bottom side of the mapping area
+        mapcoords = mapcoords.sort_values(by=["y", "x"], ascending=[False, True])
+        data = data.reindex(mapcoords.set_index(["x", "y"]).index)
+
+        mapcoords.reset_index(drop=True)
         if not index:
             data = data.reset_index(drop=True)
 
