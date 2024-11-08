@@ -88,10 +88,10 @@ def setup_spectroscopy_constants(
     registry.enable_contexts("spectroscopy")
 
     units_dict: dict[str, Unit] = {
-        Units.nm.value: registry.nm,  # type: ignore[dict-item]
+        Units.nm.value: registry.nm,
         Units.cm_1.value: (1 / registry.cm).units,
         Units.raman_shift.value: (1 / registry.cm).units,
-        Units.ev.value: registry.eV,  # type: ignore[dict-item]
+        Units.ev.value: registry.eV,
     }
 
     return units_dict

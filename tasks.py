@@ -4,6 +4,7 @@ Tasks for maintaining the NanofinderParser package.
 Execute 'invoke --list' for guidance on using Invoke
 """
 
+import logging
 import os
 import platform
 import shutil
@@ -14,6 +15,9 @@ from invoke.context import Context
 from invoke.exceptions import Failure
 from invoke.runners import Result
 from invoke.tasks import task
+
+logger = logging.getLogger(__name__)
+
 
 ROOT_DIR = Path(__file__).parent
 TEST_DIR = ROOT_DIR.joinpath("tests")
@@ -30,6 +34,7 @@ PYTHON_DIRS = [str(d) for d in [SOURCE_DIR, TEST_DIR]]
 
 def _delete_file(file: Path) -> None:
     file.unlink(missing_ok=True)
+
 
 def _run(c: Context, command: str, ignore_failure: bool = False) -> Result | None:
     try:
@@ -139,7 +144,7 @@ def clean_build(c: Context) -> None:
     for dirpath in ["build", "dist", ".eggs"]:
         shutil.rmtree(dirpath, ignore_errors=True)
     for pattern in ["*.egg-info", "*.egg"]:
-        for filename in Path().glob('**/' + pattern):
+        for filename in Path().glob("**/" + pattern):
             if filename.is_dir():
                 shutil.rmtree(filename, ignore_errors=True)
             else:
@@ -150,14 +155,14 @@ def clean_build(c: Context) -> None:
 def clean_python(c: Context) -> None:
     """Clean up python file artifacts."""
     for pattern in ["*.pyc", "*.pyo", "*~", "__pycache__"]:
-        for filename in Path().glob('**/' + pattern):
+        for filename in Path().glob("**/" + pattern):
             try:
                 if filename.is_file():
                     filename.unlink(missing_ok=True)
                 elif filename.is_dir():
                     shutil.rmtree(filename)
             except OSError as e:
-                print(f"Error: {filename} : {e.strerror}")
+                logger.warning("Failed to remove %s: %s", filename, e.strerror)
 
 
 @task
@@ -216,7 +221,9 @@ def pre_commit_install(c: Context) -> None:
 def install(c: Context) -> None:
     """Install the package and the pre-commit hooks."""
 
+
 # pipx
+
 
 @task
 def install_pipx(c: Context) -> None:
