@@ -1,3 +1,9 @@
+## v0.3.6 (2025-01-22)
+
+### Fix
+
+- **nanofinderparser.models.Axis**: fix parsing axis inversion for new nanofinder versions
+
 ## v0.3.5 (2024-11-08)
 
 ## v0.3.4 (2024-10-15)

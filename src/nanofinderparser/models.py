@@ -121,7 +121,7 @@ class Axis(BaseModel):
     ----------
     is_in_use : int
         Indicator if the axis is in use.
-    is_inversed : bool
+    is_inversed : bool | Literal["0", "-1"]
         Indicator if the axis is inversed.
     name : str
         The name of the axis.
@@ -141,7 +141,7 @@ class Axis(BaseModel):
     """
 
     is_in_use: int = Field(alias="AxisIsInUse")
-    is_inversed: bool = Field(alias="AxisIsInversed")
+    is_inversed: bool | Literal["0", "-1"] = Field(alias="AxisIsInversed")
     name: str = Field(alias="AxisName")
     unit_name: str = Field(alias="AxisUnitName")  # IMPORTANT Units of the axis
     count_step: int = Field(alias="AxisCountStep")
