@@ -2,59 +2,83 @@
 
 ----
 
-## Stable release
+## Using Package Managers
 
-To install NanofinderParser, run this command in your terminal:
+To install NanofinderParser in your project, choose your preferred package manager:
 
-=== ":simple-poetry: Poetry (recommended)"
-
-    ```bash linenums="0"
-    poetry add nanofinderparser
-    ```
-
-    If you don’t have [Poetry] installed, you can refer to the following instructions for [Poetry installation].
-
-=== "pip"
+=== "pip (simple install)"
 
     ```bash linenums="0"
     pip install nanofinderparser
     ```
 
-    If you don't have [pip] installed, this [Python installation guide] can guide
-    you through the process.
+    The following [pip guide] can help getting started with [pip] usage.
 
-These are the preferred methods to install NanofinderParser, as it will always install the most recent stable release.
+=== ":simple-uv: uv (recommended for new projects)"
 
-## From sources
-
-The sources for NanofinderParser can be downloaded from the [Github repo].
-
-You can either clone the public repository or download the [tarball].
-
-=== "Cloning"
+    First, install [uv] if you haven't already (for more detailed instructions refer to [uv installation]):
 
     ```bash linenums="0"
-    git clone git://github.com/psolsfer/nanofinderparser
+    # Windows (PowerShell)
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+    # Linux/macOS
+    curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-=== "Tarball"
+    Then create and initialize a new project:
 
     ```bash linenums="0"
-    curl -OJL https://github.com/psolsfer/nanofinderparser/tarball/main
+    # Create project directory
+    mkdir myproject && cd myproject
+
+    # Initialize project with Python 3.12
+    uv venv
+    uv python install 3.12
+
+    # Install NanofinderParser
+    uv pip install nanofinderparser
     ```
+
+=== ":simple-poetry: Poetry"
+    First, install [Poetry] if you haven't already (for more detailed instructions refer to [Poetry installation]):
+
+
+    Then create and initialize a new project:
+
+    ```bash linenums="0"
+    # Create a new project
+    poetry new myproject
+    cd myproject
+
+    # Set Python version
+    poetry env use 3.12
+
+    # Install NanofinderParser
+    poetry add nanofinderparser
+    ```
+
+## Development Installation
+
+To install NanofinderParser for development, you clone the public repository in the [Github repo]:
+
+```bash linenums="0"
+git clone git://github.com/psolsfer/nanofinderparser
+```
 
 Once you have a copy of the source, you can install it with:
 
 ```bash linenums="0"
 cd nanofinderparser
-poetry install
+uv sync
 ```
 
 This command installs all dependencies as specified in `pyproject.toml` and also creates a virtual environment if one doesn't exist.
 
 [Github repo]: <https://github.com/psolsfer/nanofinderparser>
-[pip]: https://pip.pypa.io/
-[Poetry]: https://python-poetry.org/
-[Poetry installation]: https://python-poetry.org/docs/#installation
-[Python installation guide]: http://docs.python-guide.org/en/latest/starting/installation/
-[tarball]: <https://github.com/psolsfer/nanofinderparser/tarball/main/>
+[pip]: <https://pip.pypa.io/en/stable/>
+[pip guide]: <https://pip.pypa.io/en/stable/getting-started/>
+[Poetry]: <https://python-poetry.org/>
+[Poetry installation]: <https://python-poetry.org/docs/#installation>
+[uv]: <https://docs.astral.sh/uv/>
+[uv installation]: <https://docs.astral.sh/uv/getting-started/installation/#installation-methods>

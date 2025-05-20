@@ -32,7 +32,7 @@ and "help wanted" is open to whoever wants to implement it.
 ### Write Documentation
 
 NanofinderParser could always use more documentation, whether as part of the
-official NanofinderParser docs, in docstrings, or even on the web in blog posts,
+official docs, in docstrings, or even on the web in blog posts,
 articles, and such.
 
 ### Submit Feedback
@@ -57,7 +57,7 @@ Ready to contribute? Here's how to set up `nanofinderparser` for local developme
     git clone <git@github.com>:your_name_here/nanofinderparser.git
     ```
 
-3. Set up your local copy with Poetry.
+3. Set up your local copy with uv.
 
     First, navigate to your project directory:
 
@@ -68,7 +68,7 @@ Ready to contribute? Here's how to set up `nanofinderparser` for local developme
     Then, create a new virtual environment and install the dependencies:
 
     ```bash linenums="0"
-    cd poetry install
+    uv sync
     ```
 
     This will create a new virtual environment (if one doesn’t already exist) and install the project dependencies
@@ -79,9 +79,11 @@ Ready to contribute? Here's how to set up `nanofinderparser` for local developme
     git checkout -b name-of-your-bugfix-or-feature
     ```
 
-   Now you can make your changes locally.
+    Note that this project has branch protection set up through pre-commit hooks. Direct commits to `main` and `staging` branches are prevented to maintain code quality and ensure proper review.
 
-5. After making your changes, ensure that they pass all tests. This includes testing compatibility with different Python versions using `tox`. You can run all tests with the following command:
+5. Now you can make your changes locally.
+
+6. After making your changes, ensure that they pass all tests. This includes testing compatibility with different Python versions using `tox`. You can run all tests with the following command:
 
     ```bash linenums="0"
     invoke test-all
@@ -95,15 +97,32 @@ Ready to contribute? Here's how to set up `nanofinderparser` for local developme
 
     This command will check your code for any style issues and provide feedback on any discrepancies found. It’s crucial to maintain consistent coding style for readability and maintainability of the project."
 
-6. Commit your changes and push your branch to GitHub:
+7. Commit your changes and push your branch to GitHub:
 
+=== "using commitizen"
+    ```bash
+    git add .
+    uv run cz commit
+    git push origin name-of-your-bugfix-or-feature
+    ```
+
+=== "manual commits"
     ```bash linenums="0"
     git add .
     git commit -m "Your detailed description of your changes."
     git push origin name-of-your-bugfix-or-feature
     ```
 
-7. Submit a pull request through the GitHub website.
+8. Submit a pull request through the GitHub website.
+
+9. After your PR is merged, you can safely delete your branch:
+   ```bash
+   git checkout main
+   git pull  # Get the latest changes including your merge
+   git branch -d name-of-your-bugfix-or-feature
+   ```
+
+This workflow keeps the repository history clean and organized.
 
 ### Pull Request Guidelines
 
@@ -113,7 +132,7 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated. Put
    your new functionality into a function with a docstring, and add the
    feature to the list in README.md.
-3. The pull request should work for Python 3.12, and for PyPy. Check "<span>https://github.com/psolsfer/nanofinderparser/actions</span>" and make sure that the tests pass for all supported Python versions.
+3. The pull request should work for Python 3.10, and 3.11, and for PyPy. Check "<span>https://github.com/psolsfer/nanofinderparser/actions</span>" and make sure that the tests pass for all supported Python versions.
 
 ### Tips
 
@@ -137,7 +156,7 @@ A reminder for the maintainers on how to deploy.
     Here’s how you can use Commitizen to commit your changes:
 
     ```bash linenums="0"
-    poetry run cz commit
+    uv run cz commit
     ```
 
     When you run this command, Commitizen will prompt you to fill out a commit message in a specific format. This format typically includes the type of change (e.g., feature, bugfix), a short description, and optionally a longer description and any breaking changes.
@@ -158,17 +177,17 @@ A reminder for the maintainers on how to deploy.
     The recommended method for updating the version number is to use [Commitizen]:
 
     ```bash linenums="0"
-    poetry run cz bump
+    uv run cz bump
     ```
 
     When you run this command, Commitizen will bump your project’s version according to the changes that have been made since the last release. It determines the type of version bump (major, minor, or patch) based on the commit messages. This is why it’s important to follow a standard commit message format.
 
     This command will also update the version in several files accross the project. These files must be defined in the `version_files` list under the `[tool.commitizen]` section in `pyproject.toml`.
 
-    If you are not using Commitizen, you can manually update the version number using [Poetry] (the new version can be 'major', 'minor', or 'patch'):
+    If you are not using Commitizen, you can manually update the version number using [uv] (the new version can be 'major', 'minor', or 'patch'):
 
     ```bash linenums="0"
-    poetry version minor
+    uv version minor
     ```
 
     However, note that while this will update the version in `pyproject.toml`, it won’t update the version strings in other files.
@@ -177,12 +196,12 @@ A reminder for the maintainers on how to deploy.
 
     After updating the version number, it’s important to install the package again for local development. This is because the version number is often used in the package’s metadata, and installing the package ensures that this metadata is updated.
 
-    When you install a Python package for local development using Poetry, it’s installed in editable mode. This means that changes to the source code will be immediately available in your environment, without needing to reinstall the package.
+    When you install a Python package for local development using uv, it’s installed in editable mode. This means that changes to the source code will be immediately available in your environment, without needing to reinstall the package.
 
-    Here’s how you can install the package for local development with Poetry:
+    Here’s how you can install the package for local development with uv:
 
     ```bash linenums="0"
-    poetry install
+    uv sync
     ```
 
     This command will install your package in editable mode, along with its dependencies.
@@ -197,16 +216,16 @@ A reminder for the maintainers on how to deploy.
         invoke test-all
         ```
 
-    === ":simple-poetry: Poetry"
+    === ":simple-uv: uv"
 
         ```bash linenums="0"
-        poetry run tox
+        uv run tox
         ```
 
         or
 
         ```bash linenums="0"
-        poetry run pytest
+        uv run pytest
         ```
 
 6. Push the commit

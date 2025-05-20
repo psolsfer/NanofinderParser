@@ -52,7 +52,7 @@ def validate_savemapcoords(savemapcoords: SaveMapCoords | str | Any) -> SaveMapC
         return savemapcoords
     else:
         error_msg = (
-            f"Invalid type for units: {type(savemapcoords)}. " f"Must be SaveMapCoords enum or str."
+            f"Invalid type for units: {type(savemapcoords)}. Must be SaveMapCoords enum or str."
         )
         raise TypeError(error_msg)
 

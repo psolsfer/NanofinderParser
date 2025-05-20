@@ -98,7 +98,7 @@ The data is composed of a row for each of the spectra, with the top row being th
 
 !!! info "Exporting Data"
     You can export the data to pandas DataFrames using `to_df` method of `Mapping`:
-    
+
     ```python
     data, map_coords = mapping_data.to_df(spectral_units="eV")
     ```

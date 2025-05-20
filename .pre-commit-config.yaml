@@ -1,19 +1,19 @@
 # https://pre-commit.com
 default_install_hook_types: [commit-msg, pre-commit]
-default_stages: [commit, manual]
+default_stages: [pre-commit, manual]
 fail_fast: true
 repos:
   - repo: meta
     hooks:
       - id: check-useless-excludes
   - repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.9.0
+    rev: v1.10.0
     hooks:
       - id: python-check-mock-methods
       - id: python-use-type-annotations
       - id: text-unicode-replacement-char
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.3.0
+    rev: v5.0.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -28,6 +28,7 @@ repos:
       - id: check-vcs-permalinks
       - id: check-xml
       - id: check-yaml
+        args: [--unsafe]
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
@@ -44,36 +45,36 @@ repos:
     hooks:
       - id: commitizen
         name: commitizen
-        entry: poetry run cz check
+        entry: cz check
         args: [--commit-msg-file]
         require_serial: true
         language: system
         stages: [commit-msg]
-      - id: ruff
-        name: ruff
-        entry: poetry run ruff check
-        args: ["--extend-fixable=ERA001,F401,F841,T201,T203"]
-        require_serial: true
-        language: system
-        types: [python, pyi, jupyter]
-      - id: ruff-format
-        name: ruff-format
-        entry: poetry run ruff format
-        require_serial: true
-        language: system
-        types: [python, pyi, jupyter] # ??? Does ruff-format works for jupyter files?
-      - id: poetry-check
-        name: poetry check
-        entry: poetry check
+    #
+      - id: pyproject-check
+        name: pyproject.toml check
+        entry: ruff check pyproject.toml
         language: system
         pass_filenames: false
-      - id: safety
-        name: safety
-        entry: safety check
-        language: system
-        pass_filenames: false
-      - id: mypy
-        name: mypy
-        entry: poetry run mypy
-        language: system
-        types: [python]
+    #
+    #   - id: safety
+    #     name: safety
+    #     entry: safety check
+    #     language: system
+    #     pass_filenames: false
+    #
+    #   - id: mypy
+    #     name: mypy
+    #     entry: mypy
+    #     args: ["--python-executable", "python", "--junit-xml", "reports/mypy.xml", "--explicit-package-bases"]
+    #     language: system
+    #     types: [python]
+#   - repo: https://github.com/astral-sh/ruff-pre-commit
+#     rev: v0.9.9 # Ruff version
+#     hooks:
+#         - id: ruff
+#           args: ["--extend-fixable=ERA001,F401,F841,T201,T203"]
+#
+#         - id: ruff-format
+#           args: ["check"]
+#

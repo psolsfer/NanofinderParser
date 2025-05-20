@@ -18,7 +18,6 @@ from invoke.tasks import task
 
 logger = logging.getLogger(__name__)
 
-
 ROOT_DIR = Path(__file__).parent
 TEST_DIR = ROOT_DIR.joinpath("tests")
 SOURCE_DIR = ROOT_DIR.joinpath("src/nanofinderparser")
@@ -38,7 +37,7 @@ def _delete_file(file: Path) -> None:
 
 def _run(c: Context, command: str, ignore_failure: bool = False) -> Result | None:
     try:
-        return c.run(f"poetry run {command}", pty=platform.system() != "Windows")
+        return c.run(f"uv run {command}", pty=platform.system() != "Windows")
     except Failure:
         if ignore_failure:
             return None
@@ -76,7 +75,7 @@ def lint(c: Context, check: bool = True) -> None:
 
 # Tests
 @task(help={"tox_env": "Environment name to run the test"})
-def test(c: Context, tox_env: str = "py311") -> None:
+def test(c: Context, tox_env: str = "py311") -> None:  # TODO Should be the highest supported py ver
     """Run tests with tox."""
     _run(c, f"tox -e {tox_env}")
 
@@ -195,20 +194,20 @@ def pre_release_check(c: Context) -> None:
 @task(clean)
 def dist(c: Context) -> None:
     """Build source and wheel packages."""
-    _run(c, "poetry build")
+    _run(c, "uv build")
 
 
 @task(dist)
 def release(c: Context) -> None:
     """Make a release of the python package to pypi."""
-    _run(c, "poetry publish")
+    _run(c, "uv publish")
 
 
 # Package installation
 @task(clean)
 def install_package(c: Context) -> None:
     """Install the package to the active Python's site-packages."""
-    _run(c, "poetry install")
+    _run(c, "uv sync")
 
 
 @task
@@ -234,14 +233,24 @@ def install_pipx(c: Context) -> None:
         c.run("python3 -m pip install pipx")
 
 
-# Poetry
+# uv
 @task
-def install_poetry(c: Context) -> None:
-    """Download and install Poetry using pipx."""
-    c.run("pipx install poetry")
+def install_uv(c: Context) -> None:
+    """Download and install uv."""
+    if os.name == "nt":  # Windows
+        c.run("powershell -ExecutionPolicy ByPass -c 'irm https://astral.sh/uv/install.ps1 | iex'")
+    else:  # Unix/Linux/MacOS
+        c.run("curl -LsSf https://astral.sh/uv/install.sh | sh")
 
 
-@task
-def remove_poetry(c: Context) -> None:
-    """Uninstall Poetry using pipx."""
-    c.run("pipx uninstall poetry")
+# @task
+# def remove_uv(c: Context) -> None:
+#     """Uninstall uv."""
+#     if os.name == "nt":  # Windows
+#         c.run(
+#             "(Invoke-WebRequest -Uri https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py -UseBasicParsing).Content | py - --uninstall"
+#         )
+#     else:  # Unix/Linux/MacOS
+#         c.run(
+#             "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 - --uninstall"
+#         )

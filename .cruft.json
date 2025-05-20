@@ -1,10 +1,10 @@
 {
-  "template": "https://github.com/psolsfer/Cookiecutter-PyPackage-Poet",
-  "commit": "b68274cfb216b7d80c670323cae7bb355a55a6f7",
+  "template": "E:\\DEVELOPMENT\\Github\\cookiecutter-pypackage-uv",
+  "commit": "7f3a8deaa4450cc284afaea9433586c40132d43e",
   "checkout": null,
   "context": {
     "cookiecutter": {
-      "full_name": "Pablo Sol√≠s-Fern√°ndez",
+      "full_name": "Pablo SolÌs-Fern·ndez",
       "email": "psolsfer@gmail.com",
       "github_username": "psolsfer",
       "project_name": "NanofinderParser",
@@ -13,7 +13,7 @@
       "pypi_username": "psolsfer",
       "private_package_repository_name": "",
       "private_package_repository_url": "",
-      "version": "0.1.0",
+      "version": "0.3.7",
       "python_version": "3.12",
       "use_pytest": "y",
       "formatter": "Ruff-format",
@@ -23,7 +23,7 @@
       "with_pydantic_typing": "y",
       "command_line_interface": "Typer",
       "create_author_file": "y",
-      "docstring_style": "NumPy",
+      "docstring_style": "numpy",
       "open_source_license": "BSD-3-Clause",
       "_copy_without_render": [
         "*.github/dependabot.yml",
@@ -35,7 +35,8 @@
         "docs/history.md",
         "docs/index.md"
       ],
-      "_template": "https://github.com/psolsfer/Cookiecutter-PyPackage-Poet"
+      "_template": "E:\\DEVELOPMENT\\Github\\cookiecutter-pypackage-uv",
+      "_commit": "7f3a8deaa4450cc284afaea9433586c40132d43e"
     }
   },
   "directory": null
