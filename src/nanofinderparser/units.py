@@ -200,4 +200,4 @@ def convert_spectral_units(
         converted_as_float_array: FloatOrArray = converted_value.magnitude
         return converted_as_float_array
 
-    return cast(Q, converted_value)
+    return cast("Q", converted_value)
