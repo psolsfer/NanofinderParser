@@ -1,3 +1,9 @@
+## v0.4.1 (2025-06-25)
+
+### Feat
+
+- **load.py**: load_smd_folder can also yield path of loaded smd files
+
 ## v0.4.0 (2025-05-20)
 
 ## v0.3.7 (2025-01-22)
