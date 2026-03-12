@@ -117,40 +117,84 @@ class Axis(BaseModel):
     Attributes
     ----------
     is_in_use : int
-        Indicator if the axis is in use.
-    is_inversed : bool | Literal["0", "-1"]
-        Indicator if the axis is inversed.
-    is_slow : bool | Literal["0", "-1"]
-        Indicator if the axis is slow.
+        Indicator if the axis is in use (NanoFinder VB convention: -1 = True, 0 = False).
+    is_inversed : bool
+        Whether the axis direction is inverted.
+    is_slow : bool
+        Whether this is the slow scan axis.
     name : str
         The name of the axis.
     unit_name : str
         The unit name for the axis.
+    count_start : int
+        Raw DAC count at the start of the scan.
     count_step : int
-        The count step for the axis.
+        Raw DAC count increment per step.
+    bias_float : float
+        Physical offset applied to all positions (in axis units).
     scale_float : float
-        The scale factor for the axis.
+        Conversion factor from raw DAC counts to physical units.
 
     Methods
     -------
     step_size : float
-        Property that calculates the step size.
+        Property that calculates the physical step size.
+    start_position : float
+        Property that returns the absolute physical start position.
     step_units : str
         Property that returns the step units.
     """
 
     is_in_use: int = Field(alias="AxisIsInUse")
-    is_inversed: bool | Literal["0", "-1"] = Field(alias="AxisIsInversed")
-    is_slow: bool | Literal["0", "-1"] = Field(alias="AxisIsSlow")
+    is_inversed: bool = Field(alias="AxisIsInversed")
+    is_slow: bool = Field(alias="AxisIsSlow")
     name: str = Field(alias="AxisName")
     unit_name: str = Field(alias="AxisUnitName")  # IMPORTANT Units of the axis
+    count_start: int = Field(alias="AxisCountStart")
     count_step: int = Field(alias="AxisCountStep")
+    bias_float: float = Field(alias="AxisBiasFloat")
     scale_float: float = Field(alias="AxisScaleFloat")
+
+    @field_validator("is_inversed", "is_slow", mode="before")
+    @classmethod
+    def parse_vb_bool(cls, value: str | bool | int) -> bool:
+        """Parse Visual Basic boolean convention: '0'/0 → False, '-1'/-1 → True.
+
+        Parameters
+        ----------
+        value : str | bool | int
+            Raw value from the XML.
+
+        Returns
+        -------
+        bool
+            Parsed boolean value.
+
+        Raises
+        ------
+        ValueError
+            If a string value other than '0' or '-1' is encountered.
+        """
+        if isinstance(value, str):
+            if value == "0":
+                return False
+            if value == "-1":
+                return True
+            raise ValueError(f"Unexpected boolean string value: {value!r}; expected '0' or '-1'")
+        return bool(value)
 
     @property
     def step_size(self) -> float:
-        """Step size in AxisName units."""
+        """Physical step size in axis units: ``count_step * scale_float``."""
         return self.count_step * self.scale_float
+
+    @property
+    def start_position(self) -> float:
+        """Absolute physical start position of the scan in axis units.
+
+        Computed as ``bias_float + count_start * scale_float``.
+        """
+        return self.bias_float + self.count_start * self.scale_float
 
     @property
     def step_units(self) -> str:
@@ -191,6 +235,11 @@ class StageAxesDimensions(BaseModel):
     def step_units(self) -> tuple[str, str, str]:
         """Units of the map steps in the (x,y,z) axes."""
         return (self.x.step_units, self.y.step_units, self.z.step_units)
+
+    @property
+    def start_position(self) -> tuple[float, float, float]:
+        """Absolute physical start position of the scan in the (x,y,z) axes."""
+        return (self.x.start_position, self.y.start_position, self.z.start_position)
 
 
 class Stage3DParameters(VendorVersion, BaseModel):
@@ -242,26 +291,44 @@ class Stage3DParameters(VendorVersion, BaseModel):
 class ChannelInfo(BaseModel):
     """Model for detailed channel information.
 
-    This class represents additional information about the channel,
-    including temperature, exposure time, and acquisition mode.
+    This class represents additional information about the channel, including CCD hardware
+    details, acquisition settings, and readout parameters.
 
     Attributes
     ----------
     temperature : float | None
-        The temperature of the CCD in degrees Celsius.
+        CCD temperature in degrees Celsius.
     exposure_time : float | None
-        The exposure time for each acquisition in seconds.
+        Exposure time per acquisition in seconds.
     cycle_time : float | None
-        The total cycle time for each acquisition in seconds.
+        Total cycle time per acquisition in seconds.
     acquisition_mode : str | None
-        The mode of acquisition (e.g., "accumulate", "single").
+        Acquisition mode (e.g., ``"accumulate"``, ``"single"``).
     accumulation_number : int | None
-        The number of accumulations for accumulate mode.
+        Number of accumulations (only set when acquisition_mode is ``"accumulate"``).
+    head_model : str | None
+        CCD detector head model identifier.
+    ccd_width : int | None
+        Full CCD width in pixels.
+    ccd_height : int | None
+        Full CCD height in pixels.
+    central_pixel : int | None
+        Central pixel index of the CCD used for calibration.
+    pixel_size_um : float | None
+        Physical size of each CCD pixel in micrometers.
+    horizontal_binning : int | None
+        Horizontal pixel binning factor.
+    center_row : int | None
+        Center row of the readout track on the CCD.
+    track_height : int | None
+        Height (in rows) of the readout track on the CCD.
+    readout_mode : str | None
+        CCD readout mode (e.g., ``"Single Track"``).
 
     Notes
     -----
-    All attributes are optional (can be None) to accommodate varying levels of available information
-    from different data sources.
+    All attributes are optional (can be ``None``) to accommodate varying levels of available
+    information from different data sources.
     """
 
     temperature: float | None = Field(None, alias="Temperature")
@@ -269,6 +336,15 @@ class ChannelInfo(BaseModel):
     cycle_time: float | None = Field(None, alias="CycleTime")
     acquisition_mode: str | None = Field(None, alias="AcquisitionMode")
     accumulation_number: int | None = Field(None, alias="AccumulationNumber")
+    head_model: str | None = Field(None, alias="HeadModel")
+    ccd_width: int | None = Field(None, alias="CcdWidth")
+    ccd_height: int | None = Field(None, alias="CcdHeight")
+    central_pixel: int | None = Field(None, alias="CentralPixel")
+    pixel_size_um: float | None = Field(None, alias="PixelSizeUm")
+    horizontal_binning: int | None = Field(None, alias="HorizontalBinning")
+    center_row: int | None = Field(None, alias="CenterRow")
+    track_height: int | None = Field(None, alias="TrackHeight")
+    readout_mode: str | None = Field(None, alias="ReadoutMode")
 
 
 class Channel(BaseModel):
@@ -315,6 +391,9 @@ class Channel(BaseModel):
     channel_axis_array: NDArray[np.float64] = Field(
         alias="ChannelAxisArray"
     )  # IMPORTANT # Spectral axis, with units given by ChannelAxisUnit
+    series_size: int = Field(
+        alias="SeriesSize"
+    )  # Number of series per spatial point; >1 not yet supported
 
     channel_info: ChannelInfo = Field(alias="ChannelInfo")
 
@@ -327,19 +406,48 @@ class Channel(BaseModel):
     @field_validator("channel_info", mode="before")
     @classmethod
     def parse_channel_info(cls, value: dict[str, str]) -> ChannelInfo:
-        """Parse the ChannelInfo element."""
+        """Parse the ChannelInfo free-text items into a structured ChannelInfo object.
+
+        Parameters
+        ----------
+        value : dict[str, str]
+            Raw dict of ``{ItemN: "Key = Value"}`` strings from the XML.
+
+        Returns
+        -------
+        ChannelInfo
+            Populated ChannelInfo instance.
+        """
         info_dict: dict[str, Any] = {}
         for v in value.values():
-            if "Temperature" in v:
-                info_dict["Temperature"] = float(v.split("=")[1].strip())
-            elif "Exposure time" in v:
-                info_dict["ExposureTime"] = float(v.split("=")[1].strip().split()[0])
-                info_dict["CycleTime"] = float(v.split("=")[2].strip())
+            if "Head model" in v:
+                info_dict["HeadModel"] = v.split("=")[1].strip()
+            elif "CCD Width" in v:
+                info_dict["CcdWidth"] = int(v.split("=")[1].strip())
+            elif "CCD Height" in v:
+                info_dict["CcdHeight"] = int(v.split("=")[1].strip())
+            elif "Central Pixel" in v:
+                info_dict["CentralPixel"] = int(v.split("=")[1].strip())
+            elif "Pixel Size" in v:
+                info_dict["PixelSizeUm"] = float(v.split("=")[1].strip())
             elif "Acquisition mode" in v:
                 mode_info = v.split(":")[1].strip().split(".")
                 info_dict["AcquisitionMode"] = mode_info[0].strip().lower()
                 if info_dict["AcquisitionMode"] in ["accomulate", "accumulate"]:
                     info_dict["AccumulationNumber"] = int(mode_info[1].split("=")[1].strip())
+            elif "Readout Mode" in v:
+                info_dict["ReadoutMode"] = v.split(":")[1].strip()
+            elif "Exposure time" in v:
+                info_dict["ExposureTime"] = float(v.split("=")[1].strip().split()[0])
+                info_dict["CycleTime"] = float(v.split("=")[2].strip())
+            elif "Temperature" in v:
+                info_dict["Temperature"] = float(v.split("=")[1].strip())
+            elif "Horizontal binning" in v:
+                info_dict["HorizontalBinning"] = int(v.split("=")[1].strip())
+            elif "Center Row" in v:
+                info_dict["CenterRow"] = int(v.split("=")[1].strip())
+            elif "Track Height" in v:
+                info_dict["TrackHeight"] = int(v.split("=")[1].strip())
         return ChannelInfo(**info_dict)
 
 
@@ -370,6 +478,10 @@ class ScannedFrameParameters(VendorVersion, BaseModel):
         The 3D stage parameters.
     data_calibration : DataCalibration
         The data calibration information.
+    original_file_name : str | None
+        Original file path as stored on the acquisition computer, if present.
+    data_block_size_bytes : int | None
+        Expected size of the binary data block in bytes, if present.
     """
 
     scan_repeat_number: int = Field(alias="ScanRepeatNumber")
@@ -377,6 +489,8 @@ class ScannedFrameParameters(VendorVersion, BaseModel):
     frame_options: FrameOptions = Field(alias="FrameOptions")
     stage_3d_parameters: Stage3DParameters = Field(alias="Stage3DParameters")
     data_calibration: DataCalibration = Field(alias="DataCalibration")
+    original_file_name: str | None = Field(None, alias="OriginalFileName")
+    data_block_size_bytes: int | None = Field(None, alias="DataBlockSizeBytes")
 
 
 class Mapping:
@@ -410,12 +524,16 @@ class Mapping:
         Date and time of the measurement.
     date : date
         Date of the measurement.
+    original_file_name : str | None
+        Original file path as stored on the acquisition computer.
     step_size : tuple[float, float, float]
         Size of the map steps in the (x,y,z) axes.
     step_units : tuple[str, str, str]
         Units of the map steps in the (x,y,z) axes.
     map_steps : tuple[int, int, int]
         Number of steps of the map in the (x,y,z) axes.
+    map_start : tuple[float, float, float]
+        Absolute physical start position of the scan in the (x,y,z) axes.
     map_size : tuple[float, float, float]
         Size of the map in the (x,y,z) axes, with the corresponding units for each axis.
 
@@ -649,6 +767,18 @@ class Mapping:
         return self.scanned_frame_parameters.stage_3d_parameters.map_steps
 
     @property
+    def original_file_name(self) -> str | None:
+        """Original file path as stored on the acquisition computer."""
+        return self.scanned_frame_parameters.original_file_name
+
+    @property
+    def map_start(self) -> tuple[float, float, float]:
+        """Absolute physical start position of the scan in the (x,y,z) axes."""
+        return (
+            self.scanned_frame_parameters.stage_3d_parameters.stage_axes_dimensions.start_position
+        )
+
+    @property
     def map_size(self) -> tuple[float, float, float]:
         """Size of the map in the (x,y,z) axes, with the corresponding units for each axis."""
         return (
@@ -782,9 +912,17 @@ class Mapping:
         """
         spectral_axis = self.get_spectral_axis(spectral_units=spectral_units, channel=channel)
 
-        # NOTE # TODO only 2-D (x, y) maps are supported for now; z-axis and true 3-D maps would need
-        # a different coordinate generation strategy.
-        mapcoords = _nanofinder_mapcoords(self.map_steps[0], self.map_steps[1])
+        # NOTE # TODO only 2-D (x, y) maps are supported for now; z-axis and true 3-D maps would
+        # need a different coordinate generation strategy.
+        axes = self.scanned_frame_parameters.stage_3d_parameters.stage_axes_dimensions
+        mapcoords = _nanofinder_mapcoords(
+            self.map_steps[0],
+            self.map_steps[1],
+            x_start=axes.x.start_position,
+            y_start=axes.y.start_position,
+            x_step=axes.x.step_size,
+            y_step=axes.y.step_size,
+        )
 
         data = pd.DataFrame(
             self.get_spectra(channel),
