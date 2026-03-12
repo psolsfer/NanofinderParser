@@ -123,6 +123,8 @@ class Axis(BaseModel):
         Indicator if the axis is in use.
     is_inversed : bool | Literal["0", "-1"]
         Indicator if the axis is inversed.
+    is_slow : bool | Literal["0", "-1"]
+        Indicator if the axis is slow.
     name : str
         The name of the axis.
     unit_name : str
@@ -142,6 +144,7 @@ class Axis(BaseModel):
 
     is_in_use: int = Field(alias="AxisIsInUse")
     is_inversed: bool | Literal["0", "-1"] = Field(alias="AxisIsInversed")
+    is_slow: bool | Literal["0", "-1"] = Field(alias="AxisIsSlow")
     name: str = Field(alias="AxisName")
     unit_name: str = Field(alias="AxisUnitName")  # IMPORTANT Units of the axis
     count_step: int = Field(alias="AxisCountStep")
@@ -222,6 +225,21 @@ class Stage3DParameters(VendorVersion, BaseModel):
     def map_steps(self) -> tuple[int, int, int]:
         """Number of steps of the map in the (x,y,z) axes."""
         return (self.axis_size_x, self.axis_size_y, self.axis_size_z)
+
+    @property
+    def scan_order(self) -> tuple[int, int]:
+        """Return (slow_axis_steps, fast_axis_steps) for reshape into a 2-D map.
+
+        Inferred from AxisIsSlow metadata. Falls back to (y_steps, x_steps) — i.e. x-fast — which is
+        NanoFinder's default raster scan convention, consistent with the row ordering used in
+        to_df().
+        """
+        axes = self.stage_axes_dimensions
+        if axes.x.is_slow and not axes.y.is_slow:
+            # x is slow axis: scan order is (x, y) → reshape (x_steps, y_steps)
+            return self.axis_size_x, self.axis_size_y
+        # y is slow axis (or ambiguous): default x-fast → reshape (y_steps, x_steps)
+        return self.axis_size_y, self.axis_size_x
 
 
 class ChannelInfo(BaseModel):
@@ -614,10 +632,13 @@ class Mapping:
         )
 
     def _get_data_to_map(self, channel: int = 0) -> NDArray[NPDtype_co]:
-        """Reshapes the data as the mapping: (x, y, spectrum)."""
-        return self.data.reshape(
-            (self.map_steps[0], self.map_steps[1], self.get_spectral_axis_len(channel))
-        )
+        """Reshape the data as a 2-D spatial map: (slow_axis, fast_axis, spectrum).
+
+        The axis order is inferred from the AxisIsSlow metadata. For the default NanoFinder x-fast
+        raster scan this returns shape (y, x, spectrum).
+        """
+        slow, fast = self.scanned_frame_parameters.stage_3d_parameters.scan_order
+        return self.data.reshape((slow, fast, self.get_spectral_axis_len(channel)))
 
     def _get_channel_axis_unit(self, channel: int = 0) -> Literal["nm", "cm-1", "eV"]:
         """Get the units of the spectral axis for the given channel.
