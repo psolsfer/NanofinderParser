@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -12,9 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from nanofinderparser.map import _nanofinder_mapcoords
 from nanofinderparser.units import Units, convert_spectral_units, validate_units
 from nanofinderparser.utils import SaveMapCoords, validate_savemapcoords
-
-# Type for generic numpy arrays
-NPDtype_co = TypeVar("NPDtype_co", bound=np.generic, covariant=True)
 
 
 class VendorVersion(BaseModel):
@@ -188,7 +185,7 @@ class StageAxesDimensions(BaseModel):
     @property
     def step_size(self) -> tuple[float, float, float]:
         """Size of the map steps in the (x,y,z) axes."""
-        return (self.x.step_size, self.y.step_size, self.x.step_size)
+        return (self.x.step_size, self.y.step_size, self.z.step_size)
 
     @property
     def step_units(self) -> tuple[str, str, str]:
@@ -400,7 +397,8 @@ class Mapping:
     scanned_frame_parameters : ScannedFrameParameters
         The scanned frame parameters.
     data : NDArray
-        The actual mapping data.
+        The raw flat spectral data as read from the binary section of the SMD file, shape
+        ``(n_spectra * spectral_len,)``.
 
     Properties
     ----------
@@ -423,6 +421,8 @@ class Mapping:
 
     Methods
     -------
+    get_spectra(channel: int = 0)
+        Return data reshaped as (n_spectra, spectral_len).
     get_spectral_axis(channel: int = 0)
         Get the spectral axis for the given channel.
     get_spectral_axis_len(channel: int = 0)
@@ -444,6 +444,7 @@ class Mapping:
 
     Notes
     -----
+    # TODO
     Currently, some methods that accept a 'channel' parameter default to 'channel = 0'. At present,
     we don't have SMD files with multiple channels, so it's not yet clear how to handle them
     properly. Until we encounter multi-channel SMD files, keep using 'channel = 0' for all
@@ -477,18 +478,43 @@ class Mapping:
 
     @property
     def data(self) -> NDArray[Any]:
-        """The actual mapping data."""
+        """The raw flat array of all spectral data as read from the binary part of the SMD file.
+
+        The array has shape ``(n_spectra * spectral_len,)`` — i.e. it is stored exactly as it comes
+        out of the binary section, without any reshaping.  Use :meth:`get_spectra` to obtain a 2-D
+        ``(n_spectra, spectral_len)`` view, or :meth:`_get_data_to_map` for the full
+        ``(slow_axis, fast_axis, spectral_len)`` spatial map.
+        """
         return self._data
 
     @data.setter
     def data(self, value: list[float]) -> None:
-        value_array = np.asarray(value)  # dtype will be inferred
+        self._data = np.asarray(value)  # dtype inferred; stored flat as-is
 
-        # Reshape the Data into a row per spectrum.
-        # FIXME This won't handle the case when there are more than one channel.
-        # Need a SMD file with several channels to inspect it and implement handling multichannels.
-        channel = 0
-        self._data = value_array.reshape(-1, self.get_spectral_axis_len(channel=channel))
+    def get_spectra(self, channel: int = 0) -> NDArray[Any]:
+        """Return the spectral data reshaped as ``(n_spectra, spectral_len)``.
+
+        This is the canonical 2-D view of the flat :attr:`data` array: one row per spatial point,
+        one column per spectral channel.  The row order matches the acquisition order produced by
+        :func:`~nanofinderparser.map._nanofinder_mapcoords` (x-fast raster by default).
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        NDArray[Any]
+            Array of shape ``(n_spectra, spectral_len)``.
+
+        Notes
+        -----
+        # TODO
+        Currently only ``channel = 0`` is supported.  Multi-channel SMD files are not yet
+        encountered, so the reshape logic assumes a single contiguous data block.
+        """
+        return self._data.reshape(-1, self.get_spectral_axis_len(channel=channel))
 
     def get_spectral_axis(
         self,
@@ -631,14 +657,25 @@ class Mapping:
             self.step_size[2] * (self.map_steps[2] - 1),
         )
 
-    def _get_data_to_map(self, channel: int = 0) -> NDArray[NPDtype_co]:
-        """Reshape the data as a 2-D spatial map: (slow_axis, fast_axis, spectrum).
+    def _get_data_to_map(self, channel: int = 0) -> NDArray[Any]:
+        """Reshape the data as a 3-D spatial map: ``(slow_axis, fast_axis, spectral_len)``.
 
-        The axis order is inferred from the AxisIsSlow metadata. For the default NanoFinder x-fast
-        raster scan this returns shape (y, x, spectrum).
+        The slow/fast axis order is inferred from the ``AxisIsSlow`` metadata in the SMD file.
+        For the default NanoFinder x-fast raster scan (both axes report ``AxisIsSlow=0``), this
+        returns shape ``(y_steps, x_steps, spectral_len)``.
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        NDArray[Any]
+            Array of shape ``(slow_steps, fast_steps, spectral_len)``.
         """
         slow, fast = self.scanned_frame_parameters.stage_3d_parameters.scan_order
-        return self.data.reshape((slow, fast, self.get_spectral_axis_len(channel)))
+        return self._data.reshape((slow, fast, self.get_spectral_axis_len(channel)))
 
     def _get_channel_axis_unit(self, channel: int = 0) -> Literal["nm", "cm-1", "eV"]:
         """Get the units of the spectral axis for the given channel.
@@ -745,12 +782,12 @@ class Mapping:
         """
         spectral_axis = self.get_spectral_axis(spectral_units=spectral_units, channel=channel)
 
-        # FIXME Line below doesn't work for Z-axis...
+        # NOTE # TODO only 2-D (x, y) maps are supported for now; z-axis and true 3-D maps would need
+        # a different coordinate generation strategy.
         mapcoords = _nanofinder_mapcoords(self.map_steps[0], self.map_steps[1])
-        # ... actually, this method won't work for 3D maps (with x, y and z)
 
         data = pd.DataFrame(
-            self.data,
+            self.get_spectra(channel),
             columns=spectral_axis,
             index=pd.MultiIndex.from_arrays([mapcoords["x"], mapcoords["y"]]),
         )
