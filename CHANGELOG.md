@@ -1,3 +1,14 @@
+## v0.5.0 (2026-08-20)
+
+### Feat
+
+- improve SMD XML parsing coverage and fix axis metadata handling
+
+### Fix
+
+- correct z-axis step_size bug and refactor Mapping data storage
+- fix bug in _get_data_to_map
+
 ## v0.4.1 (2025-06-25)
 
 ### Feat
