@@ -1,7 +1,7 @@
 """Console script for nanofinderparser."""
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -12,7 +12,7 @@ from nanofinderparser import load_smd
 from nanofinderparser.units import Units
 from nanofinderparser.utils import SaveMapCoords
 
-# ruff: noqa: UP007 # Using "Optional" as typer doesn't accept "X | Y" notation
+# Using "Optional" as typer doesn't accept "X | Y" notation
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -29,7 +29,7 @@ console = Console()
 )
 def convert_smd(
     input_path: Annotated[Path, typer.Argument(..., help="Path to the SMD file or folder")],
-    output: Annotated[Optional[Path], typer.Argument(help="Output folder for CSV file(s)")] = None,
+    output: Annotated[Path | None, typer.Argument(help="Output folder for CSV file(s)")] = None,
     units: Annotated[
         Units, typer.Option(case_sensitive=False, help="Units for the spectral axis")
     ] = Units.raman_shift,
@@ -123,7 +123,7 @@ def info(file: Annotated[Path, typer.Argument(..., help="Path to the SMD file")]
 @app.command()
 def export_smd(
     mapping: Annotated[Path, typer.Argument(..., help="Path to the input CSV file")],
-    output: Annotated[Optional[Path], typer.Argument(help="Output path for the SMD file")] = None,
+    output: Annotated[Path | None, typer.Argument(help="Output path for the SMD file")] = None,
 ) -> None:
     """Export a CSV file back to SMD format."""
     try:

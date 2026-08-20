@@ -1,20 +1,17 @@
 """Handling conversion of units."""
 
 import logging
-from enum import Enum
-from typing import Any, TypeVar, cast, overload
+from enum import StrEnum
+from typing import Any, cast, overload
 
 import numpy as np
 from numpy.typing import NDArray
 from pint import Quantity, Unit, UnitRegistry
 
 logger = logging.getLogger(__name__)
-FloatOrArray = TypeVar("FloatOrArray", float, NDArray[np.float64])
-
-Q = TypeVar("Q", bound=Quantity)
 
 
-class Units(str, Enum):
+class Units(StrEnum):
     """Valid units."""
 
     nm = "nm"
@@ -70,7 +67,7 @@ def validate_units(units: Units | str | Any) -> Units:
 
 
 def setup_spectroscopy_constants(
-    registry: UnitRegistry,
+    registry: UnitRegistry[float],
 ) -> dict[str, Unit]:
     """Set up constants and units for spectroscopy calculations.
 
@@ -98,30 +95,30 @@ def setup_spectroscopy_constants(
 
 
 @overload
-def convert_spectral_units(
-    value: FloatOrArray,
+def convert_spectral_units[T: (float, NDArray[np.float64])](
+    value: T,
     unit_in: Units | str,
     unit_out: Units | str,
-    laser_wavelength_nm: float | Quantity = 532.000006769476,
-) -> FloatOrArray: ...
+    laser_wavelength_nm: float | Quantity[float] = 532.000006769476,
+) -> T: ...
 
 
 @overload
-def convert_spectral_units(
+def convert_spectral_units[Q: Quantity[float]](
     value: Q,
     unit_in: Units
     | str,  # FIXME Could be inferred from 'value' (value.units) but not for raman_shift...
     unit_out: Units | str,
-    laser_wavelength_nm: float | Quantity = 532.000006769476,
+    laser_wavelength_nm: float | Quantity[float] = 532.000006769476,
 ) -> Q: ...
 
 
-def convert_spectral_units(
-    value: FloatOrArray | Q,
+def convert_spectral_units[T: (float, NDArray[np.float64]), Q: Quantity[float]](
+    value: T | Q,
     unit_in: Units | str,
     unit_out: Units | str,
-    laser_wavelength_nm: float | Quantity = 532.000006769476,
-) -> FloatOrArray | Q:
+    laser_wavelength_nm: float | Quantity[float] = 532.000006769476,
+) -> T | Q:
     """Convert spectral data between different units.
 
     Parameters
@@ -168,7 +165,7 @@ def convert_spectral_units(
 
     units_dict = setup_spectroscopy_constants(registry)
 
-    laser_wavelength_quantity: Quantity = (
+    laser_wavelength_quantity: Quantity[float] = (
         laser_wavelength_nm * registry.nm
         if not isinstance(laser_wavelength_nm, Quantity)
         else laser_wavelength_nm
@@ -176,7 +173,7 @@ def convert_spectral_units(
 
     if not isinstance(value, Quantity):
         try:
-            value_quantity: Quantity = value * units_dict[unit_in]
+            value_quantity: Quantity[float] = value * units_dict[unit_in]
         except KeyError:
             msg = f"Invalid input unit: {unit_in}"
             raise ValueError(msg) from KeyError
@@ -197,7 +194,7 @@ def convert_spectral_units(
         converted_value = value_quantity.to(units_dict[unit_out.value])
 
     if not isinstance(value, Quantity):
-        converted_as_float_array: FloatOrArray = converted_value.magnitude
+        converted_as_float_array: T | Q = converted_value.magnitude
         return converted_as_float_array
 
     return cast("Q", converted_value)

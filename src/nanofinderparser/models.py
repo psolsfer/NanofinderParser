@@ -1,5 +1,6 @@
 """Models to parse nanofinder files."""
 
+from collections.abc import Callable
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Literal
@@ -180,7 +181,8 @@ class Axis(BaseModel):
                 return False
             if value == "-1":
                 return True
-            raise ValueError(f"Unexpected boolean string value: {value!r}; expected '0' or '-1'")
+            msg = f"Unexpected boolean string value: {value!r}; expected '0' or '-1'"
+            raise ValueError(msg)
         return bool(value)
 
     @property
@@ -419,36 +421,103 @@ class Channel(BaseModel):
             Populated ChannelInfo instance.
         """
         info_dict: dict[str, Any] = {}
-        for v in value.values():
-            if "Head model" in v:
-                info_dict["HeadModel"] = v.split("=")[1].strip()
-            elif "CCD Width" in v:
-                info_dict["CcdWidth"] = int(v.split("=")[1].strip())
-            elif "CCD Height" in v:
-                info_dict["CcdHeight"] = int(v.split("=")[1].strip())
-            elif "Central Pixel" in v:
-                info_dict["CentralPixel"] = int(v.split("=")[1].strip())
-            elif "Pixel Size" in v:
-                info_dict["PixelSizeUm"] = float(v.split("=")[1].strip())
-            elif "Acquisition mode" in v:
-                mode_info = v.split(":")[1].strip().split(".")
-                info_dict["AcquisitionMode"] = mode_info[0].strip().lower()
-                if info_dict["AcquisitionMode"] in ["accomulate", "accumulate"]:
-                    info_dict["AccumulationNumber"] = int(mode_info[1].split("=")[1].strip())
-            elif "Readout Mode" in v:
-                info_dict["ReadoutMode"] = v.split(":")[1].strip()
-            elif "Exposure time" in v:
-                info_dict["ExposureTime"] = float(v.split("=")[1].strip().split()[0])
-                info_dict["CycleTime"] = float(v.split("=")[2].strip())
-            elif "Temperature" in v:
-                info_dict["Temperature"] = float(v.split("=")[1].strip())
-            elif "Horizontal binning" in v:
-                info_dict["HorizontalBinning"] = int(v.split("=")[1].strip())
-            elif "Center Row" in v:
-                info_dict["CenterRow"] = int(v.split("=")[1].strip())
-            elif "Track Height" in v:
-                info_dict["TrackHeight"] = int(v.split("=")[1].strip())
+
+        parsers: dict[str, tuple[str, Callable[[str], Any]]] = {
+            "Head model": ("HeadModel", str),
+            "CCD Width": ("CcdWidth", int),
+            "CCD Height": ("CcdHeight", int),
+            "Central Pixel": ("CentralPixel", int),
+            "Pixel Size": ("PixelSizeUm", float),
+            "Temperature": ("Temperature", float),
+            "Horizontal binning": ("HorizontalBinning", int),
+            "Center Row": ("CenterRow", int),
+            "Track Height": ("TrackHeight", int),
+        }
+
+        for text in value.values():
+            if cls._parse_simple_field(text, parsers, info_dict):
+                continue
+
+            if "Readout Mode" in text:
+                info_dict["ReadoutMode"] = text.split(":", 1)[1].strip()
+            elif "Acquisition mode" in text:
+                cls._parse_acquisition_mode(text, info_dict)
+            elif "Exposure time" in text:
+                cls._parse_exposure_time(text, info_dict)
+
         return ChannelInfo(**info_dict)
+
+    @staticmethod
+    def _parse_simple_field(
+        text: str,
+        parsers: dict[str, tuple[str, Callable[[str], Any]]],
+        info: dict[str, Any],
+    ) -> bool:
+        for key, (field, converter) in parsers.items():
+            if key in text:
+                info[field] = converter(text.split("=", 1)[1].strip())
+                return True
+
+        return False
+
+    @staticmethod
+    def _parse_acquisition_mode(
+        text: str,
+        info: dict[str, Any],
+    ) -> None:
+        mode_info = text.split(":", 1)[1].strip().split(".")
+        mode = mode_info[0].strip().lower()
+
+        info["AcquisitionMode"] = mode
+
+        if mode in {"accomulate", "accumulate"}:  # NOTE There's a typo in smd files
+            info["AccumulationNumber"] = int(mode_info[1].split("=", 1)[1].strip())
+
+    @staticmethod
+    def _parse_exposure_time(
+        text: str,
+        info: dict[str, Any],
+    ) -> None:
+        parts = text.split("=")
+
+        info["ExposureTime"] = float(parts[1].strip().split()[0])
+        info["CycleTime"] = float(parts[2].strip())
+
+    @staticmethod
+    def _parse_string_field(
+        field: str,
+    ) -> Callable[[str, dict[str, Any]], None]:
+        def parser(text: str, info: dict[str, Any]) -> None:
+            info[field] = text.split("=", 1)[1].strip()
+
+        return parser
+
+    @staticmethod
+    def _parse_int_field(
+        field: str,
+    ) -> Callable[[str, dict[str, Any]], None]:
+        def parser(text: str, info: dict[str, Any]) -> None:
+            info[field] = int(text.split("=", 1)[1].strip())
+
+        return parser
+
+    @staticmethod
+    def _parse_float_field(
+        field: str,
+    ) -> Callable[[str, dict[str, Any]], None]:
+        def parser(text: str, info: dict[str, Any]) -> None:
+            info[field] = float(text.split("=", 1)[1].strip())
+
+        return parser
+
+    @staticmethod
+    def _parse_colon_field(
+        field: str,
+    ) -> Callable[[str, dict[str, Any]], None]:
+        def parser(text: str, info: dict[str, Any]) -> None:
+            info[field] = text.split(":", 1)[1].strip()
+
+        return parser
 
 
 class DataCalibration(VendorVersion):
@@ -912,7 +981,7 @@ class Mapping:
         """
         spectral_axis = self.get_spectral_axis(spectral_units=spectral_units, channel=channel)
 
-        # NOTE # TODO only 2-D (x, y) maps are supported for now; z-axis and true 3-D maps would
+        # TODO only 2D (x and y) maps are supported for now; z-axis and true 3D maps would
         # need a different coordinate generation strategy.
         axes = self.scanned_frame_parameters.stage_3d_parameters.stage_axes_dimensions
         mapcoords = _nanofinder_mapcoords(

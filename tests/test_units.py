@@ -6,7 +6,7 @@ from pint import Quantity, UnitRegistry
 
 from nanofinderparser.units import Units, convert_spectral_units
 
-ureg = UnitRegistry()
+ureg: UnitRegistry[float] = UnitRegistry()
 
 
 @pytest.mark.parametrize(

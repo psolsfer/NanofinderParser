@@ -1,12 +1,12 @@
 """Utilities."""
 
 import operator
-from enum import Enum
+from enum import StrEnum
 from functools import reduce
 from typing import Any
 
 
-class SaveMapCoords(str, Enum):
+class SaveMapCoords(StrEnum):
     """Enumeration for specifying how mapping coordinates should be saved.
 
     Attributes

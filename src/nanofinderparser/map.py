@@ -4,9 +4,10 @@ import numpy as np
 import pandas as pd
 
 
-def _nanofinder_mapcoords(
+def _nanofinder_mapcoords(  # noqa: PLR0913
     x_size: int,
     y_size: int,
+    *,
     x_start: float = 0.0,
     y_start: float = 0.0,
     x_step: float = 1.0,
