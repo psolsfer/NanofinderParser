@@ -489,6 +489,7 @@ class Channel(BaseModel):
         info["ExposureTime"] = float(parts[1].strip().split()[0])
         info["CycleTime"] = float(parts[2].strip())
 
+    # ??? # REMOVE
     @staticmethod
     def _parse_string_field(
         field: str,
@@ -498,6 +499,7 @@ class Channel(BaseModel):
 
         return parser
 
+    # ??? # REMOVE
     @staticmethod
     def _parse_int_field(
         field: str,
@@ -507,6 +509,7 @@ class Channel(BaseModel):
 
         return parser
 
+    # ??? # REMOVE
     @staticmethod
     def _parse_float_field(
         field: str,
@@ -516,6 +519,7 @@ class Channel(BaseModel):
 
         return parser
 
+    # ??? # REMOVE
     @staticmethod
     def _parse_colon_field(
         field: str,
