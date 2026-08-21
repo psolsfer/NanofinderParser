@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.progress import Progress
 from rich.table import Table
 
-from nanofinderparser import load_mdt, load_mdt_images, load_smd
+from nanofinderparser import load_mdt_file, load_smd
 from nanofinderparser.units import Units
 from nanofinderparser.utils import SaveMapCoords
 
@@ -161,7 +161,7 @@ def convert_mdt(
         try:
             written = 0
             for file in files_to_convert:
-                spectra = load_mdt(file)
+                spectra, images = load_mdt_file(file)
                 written += len(
                     spectra.to_csv(
                         path=output_dir,
@@ -171,7 +171,7 @@ def convert_mdt(
                     )
                 )
                 if maps:
-                    written += len(load_mdt_images(file).to_csv(output_dir, filename=file.stem))
+                    written += len(images.to_csv(output_dir, filename=file.stem))
                 progress.update(task, advance=1)
                 console.print(f"[green]Converted {file}[/green]")
             console.print(
@@ -187,8 +187,7 @@ def convert_mdt(
 def info_mdt(file: Annotated[Path, typer.Argument(..., help="Path to the MDT file")]) -> None:
     """Display information about a MDT file."""
     try:
-        spectra = load_mdt(file)
-        images = load_mdt_images(file)
+        spectra, images = load_mdt_file(file)
 
         table = Table(title=f"MDT File Information: {file.name}")
         table.add_column("Title", style="cyan")

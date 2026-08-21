@@ -196,6 +196,28 @@ def load_smd_folder(
         yield (loaded, file) if return_path else loaded
 
 
+def _read_mdt_frames_by_kind(
+    file: Path,
+) -> tuple[list[MdtSpectrumFrame], list[MdtImageFrame]]:
+    """Read an MDT file once and split its frames by kind.
+
+    Parameters
+    ----------
+    file : Path
+        The path to the MDT file.
+
+    Returns
+    -------
+    tuple[list[MdtSpectrumFrame], list[MdtImageFrame]]
+        The spectrum frames and the map frames, each in file order.
+    """
+    frames = read_mdt_frames(file)
+    return (
+        [frame for frame in frames if isinstance(frame, MdtSpectrumFrame)],
+        [frame for frame in frames if isinstance(frame, MdtImageFrame)],
+    )
+
+
 def load_mdt(file: Path) -> Spectra:
     """Load and parse a NanoFinder MDT file of individual spectra.
 
@@ -237,19 +259,18 @@ def load_mdt(file: Path) -> Spectra:
     ['Spectrum_1', 'Spectrum_2']
 
     """
-    frames = read_mdt_frames(file)
-    spectrum_frames = [frame for frame in frames if isinstance(frame, MdtSpectrumFrame)]
+    file = Path(file)
+    spectrum_frames, image_frames = _read_mdt_frames_by_kind(file)
 
-    skipped = len(frames) - len(spectrum_frames)
-    if skipped:
+    if image_frames:
         logger.info(
             "%s holds %d map frame(s) alongside %d spectra; use load_mdt_images() to read them.",
             file,
-            skipped,
+            len(image_frames),
             len(spectrum_frames),
         )
 
-    return Spectra([Spectrum.from_mdt_frame(frame) for frame in spectrum_frames], source=Path(file))
+    return Spectra([Spectrum.from_mdt_frame(frame) for frame in spectrum_frames], source=file)
 
 
 def load_mdt_images(file: Path) -> Images:
@@ -290,19 +311,61 @@ def load_mdt_images(file: Path) -> Images:
     ['G Peak intensity (Lorentz)', 'G Peak position (Lorentz)']
 
     """
-    frames = read_mdt_frames(file)
-    image_frames = [frame for frame in frames if isinstance(frame, MdtImageFrame)]
+    file = Path(file)
+    spectrum_frames, image_frames = _read_mdt_frames_by_kind(file)
 
-    skipped = len(frames) - len(image_frames)
-    if skipped:
+    if spectrum_frames:
         logger.info(
             "%s holds %d spectrum frame(s) alongside %d maps; use load_mdt() to read them.",
             file,
-            skipped,
+            len(spectrum_frames),
             len(image_frames),
         )
 
-    return Images([Image.from_mdt_frame(frame) for frame in image_frames], source=Path(file))
+    return Images([Image.from_mdt_frame(frame) for frame in image_frames], source=file)
+
+
+def load_mdt_file(file: Path) -> tuple[Spectra, Images]:
+    """Load the spectra and the 2-D maps of a NanoFinder MDT file in a single pass.
+
+    :func:`load_mdt` and :func:`load_mdt_images` each read and decode the whole file, so asking
+    for both means parsing it twice. Use this function when you want everything a file holds.
+
+    Parameters
+    ----------
+    file : Path
+        The path to the MDT file.
+
+    Returns
+    -------
+    tuple[Spectra, Images]
+        The individual spectra and the 2-D maps stored in the file, each in file order. Either
+        collection may be empty.
+
+    Raises
+    ------
+    ValueError
+        If the file is not an NT-MDT file, or if one of its frames is inconsistent.
+    NotImplementedError
+        If a spectrum frame stores a layout that is not supported yet.
+    OSError
+        If there's an error reading the file.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> spectra, images = load_mdt_file(Path("path/to/your/file.mdt"))  # doctest: +SKIP
+    >>> len(spectra), len(images)  # doctest: +SKIP
+    (2, 1)
+
+    """
+    file = Path(file)
+    spectrum_frames, image_frames = _read_mdt_frames_by_kind(file)
+
+    return (
+        Spectra([Spectrum.from_mdt_frame(frame) for frame in spectrum_frames], source=file),
+        Images([Image.from_mdt_frame(frame) for frame in image_frames], source=file),
+    )
 
 
 @overload
