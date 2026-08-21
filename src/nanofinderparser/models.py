@@ -592,6 +592,8 @@ class Mapping:
     data : NDArray
         The raw flat spectral data as read from the binary section of the SMD file, shape
         ``(n_spectra * spectral_len,)``.
+    source : Path | None
+        Path of the file the mapping was read from, when known.
 
     Properties
     ----------
@@ -620,6 +622,8 @@ class Mapping:
     -------
     get_spectra(channel: int = 0)
         Return data reshaped as (n_spectra, spectral_len).
+    get_map(channel: int = 0)
+        Return data reshaped as the spatial map: (slow_axis, fast_axis, spectral_len).
     get_spectral_axis(channel: int = 0)
         Get the spectral axis for the given channel.
     get_spectral_axis_len(channel: int = 0)
@@ -628,8 +632,6 @@ class Mapping:
         Get the exposure time of the given channel.
     get_accumulation_number(channel: int = 0)
         Get the accumulation number of the given channel.
-    _get_data_to_map(channel: int = 0)
-        Reshape the data as the mapping: (x, y, spectrum) for the given channel.
     _get_channel_axis_unit(channel: int = 0)
         Get the units of the spectral axis for the given channel.
     to_csv(path: Path = Path(), filename: str = "",
@@ -648,7 +650,7 @@ class Mapping:
     operations.
     """
 
-    def __init__(self, init_dict: dict[Any, Any]) -> None:
+    def __init__(self, init_dict: dict[Any, Any], source: Path | None = None) -> None:
         """Initialize a Mapping instance.
 
         Parameters
@@ -659,7 +661,9 @@ class Mapping:
             - 'Vendor': str, optional
             - 'Version': str, optional
             - 'ScannedFrameParameters': dict
-            - 'Data': list[float]
+            - 'Data': Sequence[float] | NDArray
+        source : Path | None, optional
+            Path of the file the mapping was read from, by default None.
 
         Raises
         ------
@@ -672,6 +676,7 @@ class Mapping:
             **init_dict["ScannedFrameParameters"]
         )
         self.data = init_dict["Data"]
+        self.source = source
 
     @property
     def data(self) -> NDArray[Any]:
@@ -679,7 +684,7 @@ class Mapping:
 
         The array has shape ``(n_spectra * spectral_len,)`` — i.e. it is stored exactly as it comes
         out of the binary section, without any reshaping.  Use :meth:`get_spectra` to obtain a 2-D
-        ``(n_spectra, spectral_len)`` view, or :meth:`_get_data_to_map` for the full
+        ``(n_spectra, spectral_len)`` view, or :meth:`get_map` for the full
         ``(slow_axis, fast_axis, spectral_len)`` spatial map.
         """
         return self._data
@@ -866,7 +871,7 @@ class Mapping:
             self.step_size[2] * (self.map_steps[2] - 1),
         )
 
-    def _get_data_to_map(self, channel: int = 0) -> NDArray[Any]:
+    def get_map(self, channel: int = 0) -> NDArray[Any]:
         """Reshape the data as a 3-D spatial map: ``(slow_axis, fast_axis, spectral_len)``.
 
         The slow/fast axis order is inferred from the ``AxisIsSlow`` metadata in the SMD file.
@@ -882,6 +887,12 @@ class Mapping:
         -------
         NDArray[Any]
             Array of shape ``(slow_steps, fast_steps, spectral_len)``.
+
+        Notes
+        -----
+        This is a reshaped view of :attr:`data`, so it costs nothing and shares its memory. The
+        row order is the acquisition order, unlike the output of :meth:`to_df`, which follows
+        NanoFinder's convention of y starting at the bottom of the mapping area.
         """
         slow, fast = self.scanned_frame_parameters.stage_3d_parameters.scan_order
         return self._data.reshape((slow, fast, self.get_spectral_axis_len(channel)))
@@ -1021,7 +1032,6 @@ class Mapping:
         data = data.iloc[order]
         mapcoords = mapcoords.iloc[order].reset_index(drop=True)
 
-        mapcoords = mapcoords.reset_index(drop=True)
         if not index:
             data = data.reset_index(drop=True)
 
