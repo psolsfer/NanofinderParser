@@ -129,7 +129,7 @@ def validate_units(units: Units | str | Any) -> Units:
     if isinstance(units, str):
         try:
             return Units(units)
-        except AttributeError as err:
+        except ValueError as err:
             error_message = (
                 f"Invalid units value: {units}. Must be one of {', '.join(Units.__members__)}"
             )
