@@ -1,7 +1,5 @@
 # Installation
 
-----
-
 ## Using Package Managers
 
 To install NanofinderParser in your project, choose your preferred package manager:
@@ -16,7 +14,7 @@ To install NanofinderParser in your project, choose your preferred package manag
 
 === ":simple-uv: uv (recommended for new projects)"
 
-    First, install [uv] if you haven't already (for more detailed instructions refer to [uv installation]):
+    First, install [uv] if you haven't already (for more detailed instructions refer to [uv installation] in the official documentation):
 
     ```bash linenums="0"
     # Windows (PowerShell)
@@ -33,16 +31,15 @@ To install NanofinderParser in your project, choose your preferred package manag
     mkdir myproject && cd myproject
 
     # Initialize project with Python 3.12
-    uv venv
-    uv python install 3.12
+    uv init --python 3.12
 
     # Install NanofinderParser
-    uv pip install nanofinderparser
+    uv add nanofinderparser
     ```
 
 === ":simple-poetry: Poetry"
-    First, install [Poetry] if you haven't already (for more detailed instructions refer to [Poetry installation]):
 
+    First, install [Poetry] if you haven't already (for more detailed instructions refer to [Poetry installation] in the official documentation):
 
     Then create and initialize a new project:
 
@@ -60,25 +57,21 @@ To install NanofinderParser in your project, choose your preferred package manag
 
 ## Development Installation
 
-To install NanofinderParser for development, you clone the public repository in the [Github repo]:
+To install NanofinderParser for development:
 
 ```bash linenums="0"
-git clone git://github.com/psolsfer/nanofinderparser
-```
-
-Once you have a copy of the source, you can install it with:
-
-```bash linenums="0"
+git clone https://github.com/psolsfer/nanofinderparser.git
 cd nanofinderparser
 uv sync
 ```
 
 This command installs all dependencies as specified in `pyproject.toml` and also creates a virtual environment if one doesn't exist.
 
-[Github repo]: <https://github.com/psolsfer/nanofinderparser>
-[pip]: <https://pip.pypa.io/en/stable/>
-[pip guide]: <https://pip.pypa.io/en/stable/getting-started/>
-[Poetry]: <https://python-poetry.org/>
-[Poetry installation]: <https://python-poetry.org/docs/#installation>
-[uv]: <https://docs.astral.sh/uv/>
-[uv installation]: <https://docs.astral.sh/uv/getting-started/installation/#installation-methods>
+[GitHub repo]: https://github.com/psolsfer/nanofinderparser
+
+[pip]: https://pip.pypa.io/en/stable/
+[pip guide]: https://pip.pypa.io/en/stable/getting-started/
+[Poetry]: https://python-poetry.org/
+[Poetry installation]: https://python-poetry.org/docs/#installation
+[uv]: https://docs.astral.sh/uv/
+[uv installation]: https://docs.astral.sh/uv/getting-started/installation/#installation-methods

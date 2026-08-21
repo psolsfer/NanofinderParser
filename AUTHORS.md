@@ -1,10 +1,10 @@
-# Credits
+# Authors
 
-----
+This file lists the contributors to NanofinderParser.
 
-## Developments Lead
+## Development Lead
 
-- Pablo Solís-Fernández <psolsfer@gmail.com>
+* Pablo Solís-Fernández <psolsfer@gmail.com>
 
 ## Contributors
 

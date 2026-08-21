@@ -15,6 +15,8 @@ from pathlib import Path
 
 from nanofinderparser import load_mdt, load_mdt_images
 
+# ruff: noqa: T201
+
 SAMPLE_FOLDER = Path(__file__).parent.parent / "sample_data" / "mdt"
 
 
@@ -37,5 +39,5 @@ def export_folder(folder: Path, output: Path) -> None:
 
 if __name__ == "__main__":
     folder = Path(sys.argv[1]) if len(sys.argv) > 1 else SAMPLE_FOLDER
-    output = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("exported")
+    output = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("exported")  # noqa: PLR2004
     export_folder(folder, output)

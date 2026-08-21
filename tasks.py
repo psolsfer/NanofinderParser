@@ -32,10 +32,12 @@ PYTHON_DIRS = [str(d) for d in [SOURCE_DIR, TEST_DIR]]
 
 
 def _delete_file(file: Path) -> None:
+    """Delete a file if it exists."""
     file.unlink(missing_ok=True)
 
 
 def _run(c: Context, command: str, ignore_failure: bool = False) -> Result | None:
+    """Run a command with uv."""
     try:
         return c.run(f"uv run {command}", pty=platform.system() != "Windows")
     except Failure:
@@ -55,14 +57,14 @@ def type_check(c: Context, ignore_failure: bool = False) -> None:
 def lint_ruff(c: Context, check: bool = True, ignore_failure: bool = False) -> None:
     """Check style with Ruff."""
     check_str = "--no-fix" if check else ""
-    _run(c, "ruff check {} {}".format(check_str, " ".join(PYTHON_DIRS)), ignore_failure)
+    _run(c, f"ruff check {check_str} {' '.join(PYTHON_DIRS)}", ignore_failure)
 
 
 @task(help={"check": "Only checks without making changes (bool)"})
 def format_ruff(c: Context, check: bool = True, ignore_failure: bool = False) -> None:
     """Check style with Ruff Formatter."""
     check_str = "--check" if check else ""
-    _run(c, "ruff format {} {}".format(check_str, " ".join(PYTHON_DIRS)), ignore_failure)
+    _run(c, f"ruff format {check_str} {' '.join(PYTHON_DIRS)}", ignore_failure)
 
 
 @task(help={"check": "Only checks, without making changes"})
@@ -75,7 +77,7 @@ def lint(c: Context, check: bool = True) -> None:
 
 # Tests
 @task(help={"tox_env": "Environment name to run the test"})
-def test(c: Context, tox_env: str = "py314") -> None:  # TODO Should be the highest supported py ver
+def test(c: Context, tox_env: str = "py312") -> None:  # noqa: PT028
     """Run tests with tox."""
     _run(c, f"tox -e {tox_env}")
 
@@ -108,8 +110,8 @@ def coverage(c: Context, publish: bool = False) -> None:
 
 @task
 def safety(c: Context) -> None:
-    """Check safety of the dependencies."""
-    _run(c, "safety check --continue-on-error --full-report")
+    """Check safety of the dependencies with pip-audit."""
+    _run(c, "pip-audit")
 
 
 # Documentation
@@ -127,7 +129,7 @@ def docs(c: Context, launch: bool = True) -> None:
 @task
 def deploy_docs(c: Context) -> None:
     """Deploy documentation."""
-    _run(c, "mkdocs gh-deploy")
+    print("Documentation deployment not configured for this platform.")  # noqa: T201
 
 
 @task
@@ -210,20 +212,17 @@ def install_package(c: Context) -> None:
     _run(c, "uv sync")
 
 
-@task
-def pre_commit_install(c: Context) -> None:
-    """Install pre-commit hooks."""
-    _run(c, "pre-commit install")
+def prek_install(c: Context) -> None:
+    """Install prek hooks."""
+    _run(c, "prek install")
 
 
-@task(pre=[install_package, pre_commit_install])
+@task(pre=[install_package, prek_install])
 def install(c: Context) -> None:
-    """Install the package and the pre-commit hooks."""
+    """Install the package and the prek hooks."""
 
 
 # pipx
-
-
 @task
 def install_pipx(c: Context) -> None:
     """Download and install pipx."""
@@ -241,16 +240,3 @@ def install_uv(c: Context) -> None:
         c.run("powershell -ExecutionPolicy ByPass -c 'irm https://astral.sh/uv/install.ps1 | iex'")
     else:  # Unix/Linux/MacOS
         c.run("curl -LsSf https://astral.sh/uv/install.sh | sh")
-
-
-# @task
-# def remove_uv(c: Context) -> None:
-#     """Uninstall uv."""
-#     if os.name == "nt":  # Windows
-#         c.run(
-#             "(Invoke-WebRequest -Uri https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py -UseBasicParsing).Content | py - --uninstall"
-#         )
-#     else:  # Unix/Linux/MacOS
-#         c.run(
-#             "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 - --uninstall"
-#         )

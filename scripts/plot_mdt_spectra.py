@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 
 from nanofinderparser import load_mdt
 
+# ruff: noqa: T201
+
 SAMPLE = Path(__file__).parent.parent / "sample_data" / "mdt" / "Spectra_and_2DMaps.mdt"
 
 
