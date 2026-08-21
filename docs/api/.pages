@@ -2,6 +2,7 @@ title: API Reference
 
 nav:
     - index.md
+    - load.md
     - models.md
     - parsers.md
     - units.md

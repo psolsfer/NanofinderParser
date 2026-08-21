@@ -55,7 +55,7 @@ Once you have loaded the SMD file, you can access various parts of the data thro
 # Access basic information of the mapping
 print(f"Exposure time: {mapping.get_exposure_time()}")
 print(f"Laser power: {mapping.laser_power} mW")
-print(f"Laser wavelength: {mapping.laser_wavelength_nm} nm")
+print(f"Laser wavelength: {mapping.laser_wavelength} nm")
 print(f"Measurement date and time: {mapping.datetime}")
 
 # Access the actual mapping data
@@ -65,6 +65,16 @@ spectral_axis = mapping.get_spectral_axis("eV")
 print(f"Number of data points: {len(data)}")
 print(f"Spectral axis (eV): {spectral_axis}")
 ```
+
+`mapping.data` is the flat array exactly as stored in the file. Two reshaped views of it are
+usually more convenient:
+
+```python
+spectra = mapping.get_spectra()  # (n_spectra, spectral_len), in acquisition order
+cube = mapping.get_map()  # (slow_axis, fast_axis, spectral_len), the spatial map
+```
+
+Both are views, so they cost nothing and share memory with `mapping.data`.
 
 !!! tip
     It is recommended to create instances of the `Mapping` class using the `load_smd` function rather than instantiating it directly.
@@ -265,6 +275,14 @@ images.to_csv(path=Path("output"))  # one CSV per map
 
 A file may hold both kinds. `load_mdt` reads the spectra, `load_mdt_images` the maps, and neither loses anything the other reads.
 
+Each of those reads and decodes the whole file, so if you want both, ask for both at once:
+
+```python
+from nanofinderparser import load_mdt_file
+
+spectra, images = load_mdt_file(Path("path/to/your/file.mdt"))
+```
+
 !!! note "Map values are quantized"
     Maps are stored with 65535 levels spanning their own range of values, so the resolution is `(max - min) / 65535`. That is finer than one count for most maps, but not for those covering a very wide range.
 
@@ -283,7 +301,7 @@ nanofinderparser info-mdt input_file.mdt
 
 ### Sample files and example scripts
 
-The repository ships a few real MDT files in `sample_data/mdt/`, and short example scripts in `scripts/` that run against them:
+The repository ships a few real files in `sample_data/` — MDT files in `sample_data/mdt/`, and a mapping trimmed to a 4 x 3 grid in `sample_data/smd/` — and short example scripts in `scripts/` that run against them:
 
 ```shell
 python scripts/explore_mdt.py          # list the contents of a file
@@ -319,6 +337,10 @@ print(f"Energies: {energies_ev}")
 
 For detailed information about classes and functions, please refer to the API documentation:
 
+* [Load](../api/load.md)
 * [Models](../api/models.md)
 * [Parsers](../api/parsers.md)
 * [Units](../api/units.md)
+
+The internal layout of both file formats is described in
+[File formats](../concepts/file-formats.md).

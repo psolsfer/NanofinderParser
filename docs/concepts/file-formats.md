@@ -153,7 +153,7 @@ DataBlockSizeBytes = 4 × number of values
 
 The values run in acquisition order: each spectrum is contiguous, spectra advance along x first,
 then y, then z. Reshaping to `(y, x, spectral)` therefore gives the spatial map directly, and is
-what `Mapping._get_data_to_map` does.
+what `Mapping.get_map` does.
 
 A 50 × 50 map of 1024-point spectra gives 2500 spectra, 2 560 000 values and
 `DataBlockSizeBytes = 10 240 000` — the whole reason SMD files are tens of megabytes.
