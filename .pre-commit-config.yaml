@@ -2,18 +2,21 @@
 default_install_hook_types: [commit-msg, pre-commit]
 default_stages: [pre-commit, manual]
 fail_fast: true
+
 repos:
   - repo: meta
     hooks:
       - id: check-useless-excludes
+
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
     hooks:
       - id: python-check-mock-methods
       - id: python-use-type-annotations
       - id: text-unicode-replacement-char
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -41,6 +44,28 @@ repos:
     #   - id: no-commit-to-branch
       - id: trailing-whitespace
         types: [python]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: tox -e type
+        language: system
+        pass_filenames: false
+        types: [python]
+
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.10.1
+    hooks:
+      - id: pip-audit
+
   - repo: local
     hooks:
       - id: commitizen
@@ -50,31 +75,3 @@ repos:
         require_serial: true
         language: system
         stages: [commit-msg]
-    #
-      - id: pyproject-check
-        name: pyproject.toml check
-        entry: ruff check pyproject.toml
-        language: system
-        pass_filenames: false
-    #
-    #   - id: safety
-    #     name: safety
-    #     entry: safety check
-    #     language: system
-    #     pass_filenames: false
-    #
-    #   - id: mypy
-    #     name: mypy
-    #     entry: mypy
-    #     args: ["--python-executable", "python", "--junit-xml", "reports/mypy.xml", "--explicit-package-bases"]
-    #     language: system
-    #     types: [python]
-#   - repo: https://github.com/astral-sh/ruff-pre-commit
-#     rev: v0.9.9 # Ruff version
-#     hooks:
-#         - id: ruff
-#           args: ["--extend-fixable=ERA001,F401,F841,T201,T203"]
-#
-#         - id: ruff-format
-#           args: ["check"]
-#

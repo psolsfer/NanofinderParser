@@ -1,10 +1,12 @@
 name: Test on push and PR
 
 on:
-    push:
-      tags:
-        - 'v*'
-    pull_request:
+  push:
+    branches: [ main, develop ]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ main ]
 
 jobs:
   test:
@@ -12,28 +14,65 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ['3.11', '3.12', '3.13', '3.14']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: [
+          "3.12",
+          "3.13",
+          "3.14"
+        ]
+      fail-fast: false
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install uv
-      uses: astral-sh/setup-uv@v6
-      with:
-          activate-environment: true
-    - name: Install the project
-      run: uv sync --all-extras --dev
-    - name: Test with tox
-    #   run: uv run invoke test --tox-env ${{ matrix.tox-env }}
-      run: uv run tox
 
-#   finish:
-#     needs: test
-#     if: ${{ always() }}
-#     runs-on: ubuntu-latest
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: "**/pyproject.toml"
+
+    - name: Install dependencies
+      run: uv sync --all-extras
+
+    - name: Run security checks
+      run: uv run pip-audit
+
+  test-tox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+
+    - name: Install tox
+      run: uv tool install tox --with tox-uv
+
+    - name: Run tox
+      run: tox
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false

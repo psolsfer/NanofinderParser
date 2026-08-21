@@ -15,6 +15,8 @@ from pathlib import Path
 
 from nanofinderparser import load_mdt, load_mdt_images
 
+# ruff: noqa: T201
+
 SAMPLE = Path(__file__).parent.parent / "sample_data" / "mdt" / "Spectra_and_2DMaps.mdt"
 
 

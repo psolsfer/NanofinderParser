@@ -47,7 +47,7 @@ def load_smd(file: Path) -> Mapping:
     --------
     >>> from pathlib import Path
     >>> smd_file = Path("path/to/your/file.smd")
-    >>> mapping = load_smd(smd_file) # doctest: +SKIP
+    >>> mapping = load_smd(smd_file)  # doctest: +SKIP
 
     """
     # 1st part of the mapping file is xml

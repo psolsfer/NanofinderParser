@@ -1,1 +1,1 @@
-"""Unit test package for nanofinderparser."""
+"""Tests for nanofinderparser."""

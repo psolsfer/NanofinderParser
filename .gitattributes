@@ -1,0 +1,13 @@
+# Always use LF line endings in the repository
+* text=auto eol=lf
+
+# Keep Windows batch files using CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files (no EOL normalization)
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.zip binary

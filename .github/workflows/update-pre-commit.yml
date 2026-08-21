@@ -1,0 +1,34 @@
+name: Update pre-commit hooks
+
+on:
+  schedule:
+    - cron: "0 8 1 * *"  # 1st of every month at 08:00 UTC
+  workflow_dispatch:      # allows manual triggering from the Actions tab
+
+jobs:
+  autoupdate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install prek
+        run: uv tool install prek
+
+      - name: Run autoupdate
+        run: prek autoupdate
+
+      - name: Open pull request if hooks changed
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "build: prek autoupdate"
+          branch: pre-commit-autoupdate
+          title: "build: update pre-commit hook versions"
+          body: |
+            Automated monthly update of pre-commit hook revisions via `prek autoupdate`.
+          labels: dependencies
+          delete-branch: true
