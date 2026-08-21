@@ -2,6 +2,7 @@
 
 import logging
 from enum import IntEnum, StrEnum
+from functools import cache
 from typing import Any, cast, overload
 
 import numpy as np
@@ -141,6 +142,23 @@ def validate_units(units: Units | str | Any) -> Units:
         raise TypeError(error_message)
 
 
+@cache
+def _default_registry() -> UnitRegistry[float]:
+    """Return the registry used when neither the value nor the laser wavelength provides one.
+
+    Building a :class:`~pint.UnitRegistry` parses pint's whole unit definition file, which takes
+    a noticeable fraction of a second. Reusing a single registry keeps repeated conversions cheap
+    and avoids mixing quantities that belong to different registries, which pint does not allow.
+
+    Returns
+    -------
+    UnitRegistry
+        The shared registry.
+    """
+    return UnitRegistry()
+
+
+@cache
 def setup_spectroscopy_constants(
     registry: UnitRegistry[float],
 ) -> dict[str, Unit]:
@@ -155,6 +173,11 @@ def setup_spectroscopy_constants(
     -------
     dict[str, Unit]
         Dictionary of spectroscopy units
+
+    Notes
+    -----
+    The result is cached per registry: enabling the spectroscopy context is idempotent but not
+    free, and this function is called once per unit conversion.
     """
     # Enable conversions relevant to spectroscopy
     registry.enable_contexts("spectroscopy")
@@ -236,7 +259,7 @@ def convert_spectral_units[T: (float, NDArray[np.float64]), Q: Quantity[float]](
     elif isinstance(laser_wavelength_nm, Quantity):
         registry = laser_wavelength_nm._REGISTRY  # noqa: SLF001
     else:
-        registry = UnitRegistry()
+        registry = _default_registry()
 
     units_dict = setup_spectroscopy_constants(registry)
 
