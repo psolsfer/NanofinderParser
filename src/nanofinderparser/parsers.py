@@ -2,11 +2,10 @@
 
 import logging
 import struct
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Final, Literal, overload
+from typing import Any, Final
 from xml.parsers.expat import ExpatError
 
 import numpy as np
@@ -51,35 +50,26 @@ def read_xml_part(file: Path, position: int = 0) -> tuple[dict[str, Any], int]:
         return xml_data, f.tell()
 
 
-@overload
-def read_binary_part(
-    file: Path, position: int, data_format: Literal["c", "s", "p"]
-) -> Sequence[bytes]: ...
+# Little-endian numpy dtype for each ``struct`` format character that describes a homogeneous
+# stream of numbers.
+_NUMPY_DTYPES: Final[dict[str, str]] = {
+    "b": "<i1",
+    "B": "<u1",
+    "h": "<i2",
+    "H": "<u2",
+    "i": "<i4",
+    "I": "<u4",
+    "l": "<i4",
+    "L": "<u4",
+    "q": "<i8",
+    "Q": "<u8",
+    "e": "<f2",
+    "f": "<f4",
+    "d": "<f8",
+}
 
 
-@overload
-def read_binary_part(
-    file: Path,
-    position: int,
-    data_format: Literal["b", "B", "h", "H", "i", "I", "l", "L", "q", "Q"],
-) -> Sequence[int]: ...
-
-
-@overload
-def read_binary_part(
-    file: Path, position: int, data_format: Literal["f", "d"]
-) -> Sequence[float]: ...
-
-
-@overload
-def read_binary_part(
-    file: Path, position: int = 0, data_format: str = "f"
-) -> Sequence[float | int | bytes]: ...
-
-
-def read_binary_part(
-    file: Path, position: int = 0, data_format: str = "f"
-) -> Sequence[float | int | bytes]:
+def read_binary_part(file: Path, position: int = 0, data_format: str = "f") -> NDArray[Any]:
     """Read the binary part of a file.
 
     Parameters
@@ -88,32 +78,42 @@ def read_binary_part(
         The file to read.
     position : int, optional
         The position in the file where the binary part starts, by default 0.
-    data_format : str | bytes, optional
-        The format of the data, by default "f". "f" if data is composed of floats, "i" if it's
-        composed of integers. See https://docs.python.org/3/library/struct.html#struct-alignment for
-        further information.
-        # TODO 'data_format' can be more complex, like ">bhl"...
+    data_format : str, optional
+        The ``struct`` format character describing a single stored value, by default "f"
+        (little-endian ``float32``, which is what NanoFinder writes in SMD files). See
+        https://docs.python.org/3/library/struct.html#format-characters for the full list; only
+        the characters describing a single number are accepted.
 
     Returns
     -------
-    data : list[float | int | bytes]
-        The read data as a list. The type depends on the 'data_format'.
-    """
-    data_size = struct.calcsize(data_format)
+    NDArray[Any]
+        The read values, as a flat array whose dtype matches `data_format`. Values are read from
+        `position` to the end of the file; a trailing partial value is ignored.
 
-    data: list[float] = []
+    Raises
+    ------
+    ValueError
+        If `data_format` does not describe a single number.
+    OSError
+        If the file cannot be read.
+
+    Notes
+    -----
+    The values are read straight into a numpy array rather than through ``struct.unpack``, which
+    matters in practice: the binary part of a 10 MB mapping takes milliseconds this way and
+    seconds otherwise.
+    """
+    dtype = _NUMPY_DTYPES.get(data_format)
+    if dtype is None:
+        msg = (
+            f"Unsupported data format {data_format!r}; expected one of "
+            f"{', '.join(sorted(_NUMPY_DTYPES))}."
+        )
+        raise ValueError(msg)
+
     with Path.open(file, "rb") as f:
         f.seek(position)  # Move to the indicated position
-        data_bin = f.read()
-
-    length_of_binary_part = len(data_bin)
-    data = []
-    for i in range(0, length_of_binary_part, data_size):
-        chunk = data_bin[i : i + data_size]
-        if len(chunk) < data_size:
-            break
-        data.extend(struct.unpack(data_format, chunk))
-    return data
+        return np.fromfile(f, dtype=dtype)
 
 
 # ----------------------------------------------------------------------------------------------

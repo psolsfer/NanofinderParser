@@ -685,7 +685,7 @@ class Mapping:
         return self._data
 
     @data.setter
-    def data(self, value: list[float]) -> None:
+    def data(self, value: Sequence[float] | NDArray[Any]) -> None:
         self._data = np.asarray(value)  # dtype inferred; stored flat as-is
 
     def get_spectra(self, channel: int = 0) -> NDArray[Any]:
