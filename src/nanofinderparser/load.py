@@ -38,6 +38,11 @@ def load_smd(file: Path) -> Mapping:
     ------
     KeyError
         If expected keys are missing in the XML data.
+    ValueError
+        If the binary part of the file holds fewer values than its header describes.
+    NotImplementedError
+        If the file holds more than one detector channel, or more than one acquisition per
+        spatial point.
     IOError
         If there's an error reading the file.
     xmltodict.expat.ExpatError
@@ -50,6 +55,8 @@ def load_smd(file: Path) -> Mapping:
     >>> mapping = load_smd(smd_file)  # doctest: +SKIP
 
     """
+    file = Path(file)
+
     # 1st part of the mapping file is xml
     xml_data, file_position = read_xml_part(file)
     scandata = xml_data["SCANDATA"]
@@ -66,7 +73,81 @@ def load_smd(file: Path) -> Mapping:
     binary_data = read_binary_part(file, file_position)
     scandata["Data"] = binary_data
 
-    return Mapping(scandata)
+    mapping = Mapping(scandata, source=file)
+    _validate_smd_data_block(mapping, file)
+    return mapping
+
+
+def _validate_smd_data_block(mapping: Mapping, file: Path) -> None:
+    """Check the binary block against what the XML header of an SMD file declares.
+
+    The header states how many spectra the file holds and how long each one is, but the binary
+    block carries no length of its own: it simply runs to the end of the file. Comparing the two
+    turns a silent mis-reshape into a clear error.
+
+    Parameters
+    ----------
+    mapping : Mapping
+        The mapping just built from the file. Its data is truncated in place when the file holds
+        more values than the header declares.
+    file : Path
+        The file the mapping was read from, used for the messages.
+
+    Raises
+    ------
+    NotImplementedError
+        If the file holds more than one detector channel, or more than one acquisition per
+        spatial point, neither of which is supported yet.
+    ValueError
+        If the file holds fewer values than its header declares.
+    """
+    channels = mapping.scanned_frame_parameters.data_calibration.channels
+    if len(channels) != 1:
+        msg = (
+            f"{file} declares {len(channels)} detector channels; only single-channel SMD files "
+            "are supported."
+        )
+        raise NotImplementedError(msg)
+
+    channel = channels[0]
+    if channel.series_size != 1:
+        msg = (
+            f"{file} stores {channel.series_size} acquisitions per spatial point (SeriesSize); "
+            "only one per point is supported."
+        )
+        raise NotImplementedError(msg)
+
+    x_steps, y_steps, z_steps = mapping.map_steps
+    expected = x_steps * y_steps * z_steps * channel.series_size * channel.channel_size
+    found = int(mapping.data.size)
+
+    declared_bytes = mapping.scanned_frame_parameters.data_block_size_bytes
+    if declared_bytes is not None and declared_bytes != expected * mapping.data.itemsize:
+        logger.warning(
+            "%s declares a data block of %d bytes, but its scan parameters describe %d values "
+            "of %d bytes; trusting the scan parameters.",
+            file,
+            declared_bytes,
+            expected,
+            mapping.data.itemsize,
+        )
+
+    if found < expected:
+        msg = (
+            f"{file} is truncated: its header describes {expected} values "
+            f"({x_steps} x {y_steps} x {z_steps} points of {channel.channel_size} each), but "
+            f"only {found} could be read."
+        )
+        raise ValueError(msg)
+
+    if found > expected:
+        logger.warning(
+            "%s holds %d values more than the %d its header describes; ignoring the extra ones.",
+            file,
+            found - expected,
+            expected,
+        )
+        mapping.data = mapping.data[:expected]
 
 
 @overload

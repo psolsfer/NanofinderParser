@@ -399,6 +399,7 @@ class Channel(BaseModel):
     channel_axis_array: NDArray[np.float64] = Field(
         alias="ChannelAxisArray"
     )  # IMPORTANT # Spectral axis, with units given by ChannelAxisUnit
+    # TODO Add support for SeriesSize > 1
     series_size: int = Field(
         alias="SeriesSize"
     )  # Number of series per spatial point; >1 not yet supported
