@@ -1011,9 +1011,15 @@ class Mapping:
 
         # Reordering the rows
         # NOTE: this is not essential, only done to coincide with NanoFinder's convention of 'y'
-        # starting from the bottom side of the mapping area
-        mapcoords = mapcoords.sort_values(by=["y", "x"], ascending=[False, True])
-        data = data.reindex(mapcoords.set_index(["x", "y"]).index)
+        # starting from the bottom side of the mapping area.
+        # The rows are moved by position rather than looked up by coordinate: it avoids
+        # reindexing a large frame through a MultiIndex, and it stays correct when several
+        # points share the same coordinates (which happens for a step size of zero).
+        x_steps, y_steps = self.map_steps[0], self.map_steps[1]
+        order = np.arange(x_steps * y_steps).reshape(y_steps, x_steps)[::-1].reshape(-1)
+
+        data = data.iloc[order]
+        mapcoords = mapcoords.iloc[order].reset_index(drop=True)
 
         mapcoords = mapcoords.reset_index(drop=True)
         if not index:
