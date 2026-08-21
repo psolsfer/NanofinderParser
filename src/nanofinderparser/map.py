@@ -1,17 +1,40 @@
 """Functions related with Nanofinder mappings."""
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
+import pint_pandas  # noqa: F401
 
 
-def _nanofinder_mapcoords(  # noqa: PLR0913
+@dataclass(frozen=True, slots=True)
+class AxisSpec:
+    """Physical scan specification for a single stage axis.
+
+    Groups the start position, step size, and units needed to generate physical map
+    coordinates along one axis.
+
+    Attributes
+    ----------
+    start : float
+        Physical start coordinate of the axis, by default 0.0.
+    step : float
+        Physical step size along the axis, by default 1.0.
+    units : str | None
+        Units for the axis, by default None.
+    """
+
+    start: float = 0.0
+    step: float = 1.0
+    units: str | None = None
+
+
+def _nanofinder_mapcoords(
     x_size: int,
     y_size: int,
     *,
-    x_start: float = 0.0,
-    y_start: float = 0.0,
-    x_step: float = 1.0,
-    y_step: float = 1.0,
+    x_axis: AxisSpec | None = None,
+    y_axis: AxisSpec | None = None,
 ) -> pd.DataFrame:
     """Generate map coordinates from the size of the x and y dimensions.
 
@@ -25,14 +48,12 @@ def _nanofinder_mapcoords(  # noqa: PLR0913
         The number of points along the x-axis.
     y_size : int
         The number of points along the y-axis.
-    x_start : float, optional
-        Physical start coordinate of the x-axis, by default 0.0.
-    y_start : float, optional
-        Physical start coordinate of the y-axis, by default 0.0.
-    x_step : float, optional
-        Physical step size along the x-axis, by default 1.0.
-    y_step : float, optional
-        Physical step size along the y-axis, by default 1.0.
+    x_axis : AxisSpec | None, optional
+        Physical start, step, and units for the x-axis, by default None (start=0.0, step=1.0,
+        units=None).
+    y_axis : AxisSpec | None, optional
+        Physical start, step, and units for the y-axis, by default None (start=0.0, step=1.0,
+        units=None).
 
     Returns
     -------
@@ -68,6 +89,16 @@ def _nanofinder_mapcoords(  # noqa: PLR0913
     4  1.0  1.0
     5  2.0  1.0
     """
+    x_axis = x_axis or AxisSpec()
+    y_axis = y_axis or AxisSpec()
+
     xi = np.tile(np.arange(x_size), y_size)
     yi = np.repeat(np.arange(y_size), x_size)
-    return pd.DataFrame({"x": x_start + xi * x_step, "y": y_start + yi * y_step})
+    x_dtype = f"pint[{x_axis.units}]" if x_axis.units else None
+    y_dtype = f"pint[{y_axis.units}]" if y_axis.units else None
+    return pd.DataFrame(
+        {
+            "x": pd.Series(x_axis.start + xi * x_axis.step, dtype=x_dtype),
+            "y": pd.Series(y_axis.start + yi * y_axis.step, dtype=y_dtype),
+        }
+    )

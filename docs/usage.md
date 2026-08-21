@@ -113,7 +113,7 @@ The returned objects have the following structure:
 
 2. `map_coords`: A DataFrame containing the mapping coordinates.
 
-    * **Columns**: 'x' and 'y' (and potentially 'z' for 3D mappings).
+    * **Columns**: 'x' and 'y' (and potentially 'z' for 3D mappings), as `pint`-aware columns carrying the stage's physical units (e.g. nm) when available.
     * **Rows**: Correspond to the spectra in the same order as in the data DataFrame.
 
 !!! note "Customizing the Index"

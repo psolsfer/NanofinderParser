@@ -10,7 +10,7 @@ import pandas as pd
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from nanofinderparser.map import _nanofinder_mapcoords
+from nanofinderparser.map import AxisSpec, _nanofinder_mapcoords
 from nanofinderparser.units import Units, convert_spectral_units, validate_units
 from nanofinderparser.utils import SaveMapCoords, validate_savemapcoords
 
@@ -977,20 +977,20 @@ class Mapping:
         Returns
         -------
         tuple[pd.DataFrame, pd.DataFrame]
-            The data and mapping coordinates as DataFrames.
+            The data and mapping coordinates as DataFrames. The mapping coordinates' 'x' and 'y'
+            columns carry `pint` units (via `pint-pandas`) matching the stage axes' units, when
+            available.
         """
         spectral_axis = self.get_spectral_axis(spectral_units=spectral_units, channel=channel)
 
-        # TODO only 2D (x and y) maps are supported for now; z-axis and true 3D maps would
-        # need a different coordinate generation strategy.
+        # TODO only 2D (x and y) maps are supported for now; z-axis and true 3D maps would need a
+        # different coordinate generation strategy.
         axes = self.scanned_frame_parameters.stage_3d_parameters.stage_axes_dimensions
         mapcoords = _nanofinder_mapcoords(
             self.map_steps[0],
             self.map_steps[1],
-            x_start=axes.x.start_position,
-            y_start=axes.y.start_position,
-            x_step=axes.x.step_size,
-            y_step=axes.y.step_size,
+            x_axis=AxisSpec(axes.x.start_position, axes.x.step_size, axes.x.unit_name),
+            y_axis=AxisSpec(axes.y.start_position, axes.y.step_size, axes.y.unit_name),
         )
 
         data = pd.DataFrame(
