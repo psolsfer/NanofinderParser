@@ -2,7 +2,14 @@
 
 ## Introduction
 
-NanoFinderParser is a Python library for parsing SMD (Scanned Measurement Data) files produced by NanoFinder instruments. This library provides a set of tools to read, parse, and manipulate SMD file data.
+NanoFinderParser is a Python library for parsing the data files produced by NanoFinder instruments. This library provides a set of tools to read, parse, and manipulate them.
+
+There are two kinds of file, and each has its own loader:
+
+| File | Contents | Loader |
+| ---- | -------- | ------ |
+| `.smd` | A mapping: one spectrum per point of a spatial scan | `load_smd` |
+| `.mdt` | Individual spectra, and 2-D maps | `load_mdt`, `load_mdt_images` |
 
 ## Installation
 
@@ -12,7 +19,7 @@ You can install NanoFinderParser using pip:
 pip install nanofinderparser
 ```
 
-## Basic usage
+## Mapping files (`.smd`)
 
 ### Loading an SMD file
 
@@ -166,6 +173,123 @@ nanofinderparser info mapping_file.smd
 ```
 
 This command will show details such as the laser wavelength and power, exposure time, map and step size, ...
+
+## Individual spectra (`.mdt`)
+
+When you measure single points instead of a mapping, NanoFinder saves the result as an MDT file. One file usually holds **several** spectra, each with its own title, so `load_mdt` returns a collection:
+
+```python
+from pathlib import Path
+from nanofinderparser import load_mdt
+
+spectra = load_mdt(Path("path/to/your/file.mdt"))
+
+print(spectra.titles)      # ['Spectrum_1', 'Spectrum_2']
+print(len(spectra))        # 2
+```
+
+You can get a spectrum by position or by title, iterate over the collection, or slice it:
+
+```python
+first = spectra[0]
+named = spectra["Spectrum_2"]
+
+for spectrum in spectra:
+    print(spectrum.title, spectrum.datetime)
+```
+
+### Working with a spectrum
+
+Each `Spectrum` carries its own spectral axis and its intensities as numpy arrays, plus the metadata of the measurement:
+
+```python
+spectrum = spectra["Spectrum_1"]
+
+print(f"Title: {spectrum.title}")
+print(f"Laser wavelength: {spectrum.laser_wavelength} nm")
+print(f"Measured at: {spectrum.datetime}")
+print(f"Points: {spectrum.spectral_axis_len}")
+
+# The axis as stored (NanoFinder writes nm), and converted to the units you work in
+wavelength = spectrum.spectral_axis
+raman_shift = spectrum.get_spectral_axis("raman_shift")
+intensity = spectrum.data
+```
+
+!!! warning "Spectra in the same file may not share a spectral axis"
+    Each spectrum is an independent measurement, and may have been recorded at a different grating position. Always take the axis from the spectrum you are plotting, rather than reusing the one from another.
+
+### Exporting spectra
+
+A single spectrum exports to a DataFrame indexed by the spectral axis:
+
+```python
+df = spectrum.to_df(spectral_units="raman_shift")
+```
+
+The whole collection exports too. By default `to_csv` writes **one file per spectrum**, which is the safe option when the axes differ:
+
+```python
+spectra.to_csv(path=Path("output"), spectral_units="raman_shift")
+```
+
+Use `combined=True` to put everything in a single file, with one column per spectrum. If the spectra do not share an axis, the columns are aligned on the union of the axes, leaving empty cells, and a warning is emitted:
+
+```python
+spectra.to_csv(path=Path("output"), filename="all", combined=True)
+df = spectra.to_df(spectral_units="raman_shift")
+```
+
+!!! note "Layout"
+    This is transposed with respect to `Mapping.to_df`: spectra go in **columns**, not rows. In a mapping every row is tied to a map coordinate, whereas here each spectrum stands on its own.
+
+### 2-D maps
+
+MDT files can also hold maps: either measured directly (a PL intensity map, say) or produced by fitting each spectrum of a mapping, such as the position or FWHM of a peak. Those are read with `load_mdt_images`:
+
+```python
+from nanofinderparser import load_mdt_images
+
+images = load_mdt_images(Path("path/to/your/file.mdt"))
+
+for image in images:
+    print(image.title, image.shape, image.value_unit)
+
+peak_map = images["G Peak position (Lorentz)"]
+values = peak_map.values            # 2-D array, shape (y, x)
+df = peak_map.to_df()               # indexed by the physical coordinates
+images.to_csv(path=Path("output"))  # one CSV per map
+```
+
+A file may hold both kinds. `load_mdt` reads the spectra, `load_mdt_images` the maps, and neither loses anything the other reads.
+
+!!! note "Map values are quantized"
+    Maps are stored with 65535 levels spanning their own range of values, so the resolution is `(max - min) / 65535`. That is finer than one count for most maps, but not for those covering a very wide range.
+
+### CLI usage
+
+```shell
+# Convert the spectra of an MDT file (or of every MDT file in a folder) to CSV
+nanofinderparser convert-mdt input_file.mdt [output_folder] --units nm
+
+# Write all the spectra of each file to a single CSV, and export the maps too
+nanofinderparser convert-mdt input_file.mdt output_folder --combined --maps
+
+# List what a file contains
+nanofinderparser info-mdt input_file.mdt
+```
+
+### Sample files and example scripts
+
+The repository ships a few real MDT files in `sample_data/mdt/`, and short example scripts in `scripts/` that run against them:
+
+```shell
+python scripts/explore_mdt.py          # list the contents of a file
+python scripts/plot_mdt_spectra.py     # plot the spectra (needs matplotlib)
+python scripts/export_mdt_to_csv.py    # export a whole folder to CSV
+```
+
+Each accepts a path, so you can point them at your own files.
 
 ## Advanced usage
 

@@ -1,7 +1,7 @@
 """Handling conversion of units."""
 
 import logging
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Any, cast, overload
 
 import numpy as np
@@ -31,6 +31,81 @@ class Units(StrEnum):
                 if member.value.lower() == value.lower():
                     return member
         return None
+
+
+class MdtUnit(IntEnum):
+    """Unit codes used by the NT-MDT ``.mdt`` binary format.
+
+    Each axis of an ``.mdt`` frame stores its unit as a signed 16-bit integer. The codes below
+    follow the convention shared by NT-MDT software and third-party readers such as Gwyddion.
+
+    Attributes
+    ----------
+    raman_shift : int
+        Raman shift, in cm-1 relative to the excitation line (-10).
+    meter, centimeter, millimeter, micrometer, nanometer, angstrom : int
+        Length units (-5 to 0).
+    nanoampere, volt, volt_high : int
+        Electrical units (1, 2 and 8).
+    dimensionless : int
+        No unit (3).
+    kilohertz, degrees, percent, celsius : int
+        Miscellaneous units (4 to 7).
+    second, millisecond, microsecond, nanosecond : int
+        Time units (9 to 12).
+    counts, pixels : int
+        Detector units (13 and 14).
+
+    Notes
+    -----
+    NanoFinder writes ``nanometer`` for the spectral axis and ``counts`` for the intensity axis.
+    """
+
+    raman_shift = -10
+    meter = -5
+    centimeter = -4
+    millimeter = -3
+    micrometer = -2
+    nanometer = -1
+    angstrom = 0
+    nanoampere = 1
+    volt = 2
+    dimensionless = 3
+    kilohertz = 4
+    degrees = 5
+    percent = 6
+    celsius = 7
+    volt_high = 8
+    second = 9
+    millisecond = 10
+    microsecond = 11
+    nanosecond = 12
+    counts = 13
+    pixels = 14
+
+    @property
+    def spectral_units(self) -> Units:
+        """Equivalent :class:`Units` member for use as a spectral axis.
+
+        Returns
+        -------
+        Units
+            The matching spectral unit.
+
+        Raises
+        ------
+        ValueError
+            If this unit cannot describe a spectral axis.
+        """
+        mapping: dict[MdtUnit, Units] = {
+            MdtUnit.nanometer: Units.nm,
+            MdtUnit.raman_shift: Units.raman_shift,
+        }
+        try:
+            return mapping[self]
+        except KeyError:
+            msg = f"MDT unit {self.name!r} ({self.value}) is not a valid spectral axis unit"
+            raise ValueError(msg) from None
 
 
 def validate_units(units: Units | str | Any) -> Units:

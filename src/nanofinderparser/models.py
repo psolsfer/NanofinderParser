@@ -1,18 +1,24 @@
 """Models to parse nanofinder files."""
 
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, Self, overload
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
+from pyauxlib.fileutils.filesfolders import clean_filename
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nanofinderparser.map import AxisSpec, _nanofinder_mapcoords
-from nanofinderparser.units import Units, convert_spectral_units, validate_units
+from nanofinderparser.parsers import MdtImageFrame, MdtSpectrumFrame
+from nanofinderparser.units import MdtUnit, Units, convert_spectral_units, validate_units
 from nanofinderparser.utils import SaveMapCoords, validate_savemapcoords
+
+logger = logging.getLogger(__name__)
 
 
 class VendorVersion(BaseModel):
@@ -1010,3 +1016,666 @@ class Mapping:
             data = data.reset_index(drop=True)
 
         return data, mapcoords
+
+
+# Number of arrays NanoFinder stores per spectrum frame: the spectral axis and the intensities.
+_MDT_SPECTRUM_ARRAY_COUNT: int = 2
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Spectrum:
+    """A single spectrum, as stored in a NanoFinder ``.mdt`` file.
+
+    Unlike :class:`Mapping`, which holds one spectrum per point of a spatial scan, a Spectrum is a
+    standalone measurement with no associated stage coordinates. A ``.mdt`` file usually holds
+    several of them; use :func:`~nanofinderparser.load.load_mdt` to obtain a :class:`Spectra`
+    collection rather than building instances directly.
+
+    Attributes
+    ----------
+    title : str
+        Name given to the spectrum in NanoFinder, for example ``"Spectrum_1"``.
+    spectral_axis : NDArray[np.float64]
+        The spectral axis, in the units given by `spectral_axis_unit`.
+    data : NDArray[np.float64]
+        The measured intensities, aligned with `spectral_axis`.
+    spectral_axis_unit : Units
+        Units of the stored spectral axis. NanoFinder writes ``nm`` in ``.mdt`` files.
+    data_unit : str
+        Units of the intensities, typically ``"counts"``.
+    laser_wavelength : float | None
+        Excitation wavelength in nm, or None when the file does not record it.
+    measured_at : datetime | None
+        Acquisition timestamp, or None when the file stores an invalid date.
+    text_comment : str
+        Free-text comment attached to the measurement, empty when absent.
+
+    Properties
+    ----------
+    datetime : datetime | None
+        Date and time of the measurement.
+    date : date | None
+        Date of the measurement.
+    spectral_axis_len : int
+        Number of data points of the spectrum.
+
+    Methods
+    -------
+    get_spectral_axis(spectral_units=None)
+        Get the spectral axis, optionally converted to other units.
+    to_df(spectral_units=None)
+        Export the spectrum to a DataFrame indexed by the spectral axis.
+    to_csv(path=Path(), filename="", spectral_units=None)
+        Export the spectrum to a csv file.
+    """
+
+    title: str
+    spectral_axis: NDArray[np.float64]
+    data: NDArray[np.float64]
+    spectral_axis_unit: Units
+    data_unit: str
+    laser_wavelength: float | None
+    measured_at: datetime | None
+    text_comment: str = ""
+
+    @classmethod
+    def from_mdt_frame(cls, frame: MdtSpectrumFrame) -> Self:
+        """Build a Spectrum from a raw frame read out of a ``.mdt`` file.
+
+        Parameters
+        ----------
+        frame : MdtSpectrumFrame
+            The decoded frame, as returned by
+            :func:`~nanofinderparser.parsers.read_mdt_frames`.
+
+        Returns
+        -------
+        Spectrum
+            The corresponding spectrum.
+
+        Raises
+        ------
+        NotImplementedError
+            If the frame stores a number of arrays other than two, which is not supported yet.
+        ValueError
+            If the spectral axis of the frame is stored in units that are not spectral.
+        """
+        if frame.array_count != _MDT_SPECTRUM_ARRAY_COUNT:
+            msg = (
+                f"MDT frame {frame.index} stores {frame.array_count} arrays; only frames with "
+                f"{_MDT_SPECTRUM_ARRAY_COUNT} (spectral axis and intensities) are supported."
+            )
+            raise NotImplementedError(msg)
+
+        return cls(
+            title=frame.title,
+            spectral_axis=frame.arrays[0],
+            data=frame.arrays[1],
+            spectral_axis_unit=MdtUnit(frame.x_scale.unit_code).spectral_units,
+            data_unit=_mdt_unit_name(frame.z_scale.unit_code),
+            laser_wavelength=frame.laser_wavelength_nm,
+            measured_at=frame.measured_at,
+            text_comment=frame.text_comment,
+        )
+
+    @property
+    def datetime(self) -> datetime | None:
+        """Date and time of the measurement."""
+        return self.measured_at
+
+    @property
+    def date(self) -> date | None:
+        """Date of the measurement."""
+        return None if self.measured_at is None else self.measured_at.date()
+
+    @property
+    def spectral_axis_len(self) -> int:
+        """Number of data points of the spectrum."""
+        return int(self.spectral_axis.size)
+
+    def get_spectral_axis(
+        self,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+    ) -> NDArray[np.float64]:
+        """Get the spectral axis, optionally converting it to the specified units.
+
+        Parameters
+        ----------
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            The units to convert the spectral axis to. If None, returns the original units.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The spectral axis in the specified units.
+
+        Raises
+        ------
+        ValueError
+            If a conversion to or from ``raman_shift`` is requested but the file does not record
+            the excitation wavelength.
+        """
+        if spectral_units is None:
+            return self.spectral_axis
+
+        new_unit = validate_units(spectral_units)
+        if new_unit == self.spectral_axis_unit:
+            return self.spectral_axis
+
+        if self.laser_wavelength is None:
+            if Units.raman_shift in (new_unit, self.spectral_axis_unit):
+                msg = (
+                    f"Cannot convert the spectral axis of {self.title!r} to {new_unit}: the file "
+                    "does not record the excitation wavelength."
+                )
+                raise ValueError(msg)
+            return convert_spectral_units(self.spectral_axis, self.spectral_axis_unit, new_unit)
+
+        return convert_spectral_units(
+            self.spectral_axis,
+            self.spectral_axis_unit,
+            new_unit,
+            laser_wavelength_nm=self.laser_wavelength,
+        )
+
+    def to_df(
+        self,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+    ) -> pd.DataFrame:
+        """Export the spectrum to a DataFrame.
+
+        The spectral axis becomes the index, and the intensities a single column named after the
+        title of the spectrum.
+
+        Parameters
+        ----------
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            Units in which the spectral axis will be exported, by default None (the units stored
+            in the file).
+
+        Returns
+        -------
+        pd.DataFrame
+            A single-column DataFrame indexed by the spectral axis.
+
+        Notes
+        -----
+        This layout is transposed with respect to :meth:`Mapping.to_df`, which puts one spectrum
+        per *row* because every row is tied to a map coordinate. Spectra in a ``.mdt`` file are
+        independent measurements, so a column per spectrum is the more natural layout.
+        """
+        axis_unit = (
+            self.spectral_axis_unit if spectral_units is None else validate_units(spectral_units)
+        )
+        return pd.DataFrame(
+            {self.title: self.data},
+            index=pd.Index(self.get_spectral_axis(spectral_units), name=str(axis_unit)),
+        )
+
+    def to_csv(
+        self,
+        path: Path = Path(),
+        filename: str = "",
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+    ) -> Path:
+        """Export the spectrum to a csv file.
+
+        The first column holds the spectral axis in the selected units, and the second the
+        intensities.
+
+        Parameters
+        ----------
+        path : Path, optional
+            Folder in which the file will be saved, by default Path().
+        filename : str, optional
+            Name to use for the file, by default "" (the sanitized title of the spectrum).
+            Any extension will be replaced by ".csv".
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            Units in which the spectral axis will be exported, by default None.
+
+        Returns
+        -------
+        Path
+            The path of the written file.
+        """
+        stem = Path(filename).with_suffix("").as_posix() if filename else self.title
+        file_path = path / (clean_filename(stem) + ".csv")
+
+        path.mkdir(parents=True, exist_ok=True)
+        self.to_df(spectral_units).to_csv(file_path, na_rep="NaN")
+        return file_path
+
+
+def _mdt_unit_name(unit_code: int) -> str:
+    """Return a readable name for a raw NT-MDT unit code.
+
+    Parameters
+    ----------
+    unit_code : int
+        The raw code stored in the file.
+
+    Returns
+    -------
+    str
+        The name of the matching :class:`~nanofinderparser.units.MdtUnit` member, or the code
+        itself as a string when it is not a known unit.
+    """
+    try:
+        return MdtUnit(unit_code).name
+    except ValueError:
+        logger.warning("Unknown MDT unit code %d.", unit_code)
+        return str(unit_code)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Image:
+    """A 2-D scalar map, as stored in a NanoFinder ``.mdt`` file.
+
+    NanoFinder uses these both for maps measured directly (for instance a PL intensity map) and
+    for maps of parameters obtained by fitting each spectrum of a mapping, such as the position,
+    intensity, or FWHM of a peak. Unlike :class:`Mapping`, an Image holds a single value per
+    point rather than a whole spectrum.
+
+    Attributes
+    ----------
+    title : str
+        Name given to the map in NanoFinder, for example ``"G Peak position (Lorentz)"``.
+    values : NDArray[np.float64]
+        The map, of shape ``(y_size, x_size)``, in the units given by `value_unit`.
+    x_axis, y_axis : AxisSpec
+        Start position, step, and units of the two spatial axes.
+    value_unit : str
+        Units of the mapped values, for example ``"counts"`` or ``"raman_shift"``.
+    measured_at : datetime | None
+        Acquisition timestamp, or None when the file stores an invalid date.
+    text_comment : str
+        Free-text comment attached to the map, empty when absent.
+
+    Properties
+    ----------
+    shape : tuple[int, int]
+        Shape of the map, as ``(y_size, x_size)``.
+    x_coords, y_coords : NDArray[np.float64]
+        Physical coordinates along each axis.
+    datetime : datetime | None
+        Date and time of the measurement.
+    date : date | None
+        Date of the measurement.
+
+    Methods
+    -------
+    to_df()
+        Export the map to a DataFrame indexed by the y coordinates.
+    to_csv(path=Path(), filename="")
+        Export the map to a csv file.
+
+    Notes
+    -----
+    Maps are stored as signed ``int16`` levels scaled to cover the range of the map, so their
+    resolution is limited to roughly one 65536th of that range. This is finer than one count for
+    most maps, but not for those covering a wide range of values: a map running from 1e5 to 2e5
+    counts only resolves steps of about 1.7 counts, and the original values cannot be recovered
+    beyond that.
+
+    The unit codes written by NanoFinder for the spatial axes are not always self-consistent:
+    some files declare ``meter`` for step sizes that are clearly in micrometers. The codes are
+    reported as they are stored, without reinterpretation.
+    """
+
+    title: str
+    values: NDArray[np.float64]
+    x_axis: AxisSpec
+    y_axis: AxisSpec
+    value_unit: str
+    measured_at: datetime | None
+    text_comment: str = ""
+
+    @classmethod
+    def from_mdt_frame(cls, frame: MdtImageFrame) -> Self:
+        """Build an Image from a raw frame read out of a ``.mdt`` file.
+
+        Parameters
+        ----------
+        frame : MdtImageFrame
+            The decoded frame, as returned by
+            :func:`~nanofinderparser.parsers.read_mdt_frames`.
+
+        Returns
+        -------
+        Image
+            The corresponding map.
+        """
+        return cls(
+            title=frame.title,
+            values=frame.values,
+            x_axis=AxisSpec(
+                frame.x_scale.offset, frame.x_scale.step, _mdt_unit_name(frame.x_scale.unit_code)
+            ),
+            y_axis=AxisSpec(
+                frame.y_scale.offset, frame.y_scale.step, _mdt_unit_name(frame.y_scale.unit_code)
+            ),
+            value_unit=_mdt_unit_name(frame.z_scale.unit_code),
+            measured_at=frame.measured_at,
+            text_comment=frame.text_comment,
+        )
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of the map, as ``(y_size, x_size)``."""
+        y_size, x_size = self.values.shape
+        return int(y_size), int(x_size)
+
+    @property
+    def x_coords(self) -> NDArray[np.float64]:
+        """Physical coordinates along the x (fast) axis."""
+        coords = self.x_axis.start + np.arange(self.shape[1]) * self.x_axis.step
+        return coords.astype(np.float64)
+
+    @property
+    def y_coords(self) -> NDArray[np.float64]:
+        """Physical coordinates along the y (slow) axis."""
+        coords = self.y_axis.start + np.arange(self.shape[0]) * self.y_axis.step
+        return coords.astype(np.float64)
+
+    @property
+    def datetime(self) -> datetime | None:
+        """Date and time of the measurement."""
+        return self.measured_at
+
+    @property
+    def date(self) -> date | None:
+        """Date of the measurement."""
+        return None if self.measured_at is None else self.measured_at.date()
+
+    def to_df(self) -> pd.DataFrame:
+        """Export the map to a DataFrame.
+
+        The y coordinates become the index and the x coordinates the columns, so the DataFrame
+        has the same layout as the map itself.
+
+        Returns
+        -------
+        pd.DataFrame
+            The map, indexed by physical coordinates.
+        """
+        return pd.DataFrame(
+            self.values,
+            index=pd.Index(self.y_coords, name=f"y ({self.y_axis.units})"),
+            columns=pd.Index(self.x_coords, name=f"x ({self.x_axis.units})"),
+        )
+
+    def to_csv(self, path: Path = Path(), filename: str = "") -> Path:
+        """Export the map to a csv file.
+
+        Parameters
+        ----------
+        path : Path, optional
+            Folder in which the file will be saved, by default Path().
+        filename : str, optional
+            Name to use for the file, by default "" (the sanitized title of the map).
+            Any extension will be replaced by ".csv".
+
+        Returns
+        -------
+        Path
+            The path of the written file.
+        """
+        stem = Path(filename).with_suffix("").as_posix() if filename else self.title
+        file_path = path / (clean_filename(stem) + ".csv")
+
+        path.mkdir(parents=True, exist_ok=True)
+        self.to_df().to_csv(file_path, na_rep="NaN")
+        return file_path
+
+
+class Titled(Protocol):
+    """Protocol for the items held by a :class:`TitledSequence`."""
+
+    @property
+    def title(self) -> str:
+        """Name of the item."""
+        ...
+
+
+class TitledSequence[ItemT: Titled](Sequence[ItemT]):
+    """Read-only sequence of titled items, that also allows lookup by title.
+
+    Attributes
+    ----------
+    source : Path | None
+        Path of the file the items were read from, when known.
+    """
+
+    def __init__(self, items: Sequence[ItemT], source: Path | None = None) -> None:
+        """Initialize the collection.
+
+        Parameters
+        ----------
+        items : Sequence[ItemT]
+            The items to hold, in file order.
+        source : Path | None, optional
+            Path of the file the items were read from, by default None.
+        """
+        self._items: list[ItemT] = list(items)
+        self.source = source
+
+    def __len__(self) -> int:
+        """Items in the collection."""
+        return len(self._items)
+
+    def __iter__(self) -> Iterator[ItemT]:
+        """Iterate over the items in file order."""
+        return iter(self._items)
+
+    @overload
+    def __getitem__(self, key: int | str) -> ItemT: ...
+    @overload
+    def __getitem__(self, key: slice) -> Self: ...
+    def __getitem__(self, key: int | str | slice) -> "ItemT | Self":
+        """Get an item by position or title, or a sub-collection by slice.
+
+        Parameters
+        ----------
+        key : int | str | slice
+            The position of the item, its title, or a slice of positions.
+
+        Returns
+        -------
+        ItemT | Self
+            The requested item, or a collection of the same type when `key` is a slice.
+
+        Raises
+        ------
+        KeyError
+            If `key` is a title that no item in the collection has.
+        """
+        if isinstance(key, str):
+            for item in self._items:
+                if item.title == key:
+                    return item
+            msg = f"No item titled {key!r}. Available titles: {self.titles}"
+            raise KeyError(msg)
+        if isinstance(key, slice):
+            return type(self)(self._items[key], source=self.source)
+        return self._items[key]
+
+    def __repr__(self) -> str:
+        """Concise representation listing the titles of the items."""
+        return f"{type(self).__name__}({self.titles!r})"
+
+    @property
+    def titles(self) -> list[str]:
+        """Titles of the items, in file order."""
+        return [item.title for item in self._items]
+
+    def unique_titles(self) -> list[str]:
+        """Return the titles, disambiguating duplicates with a numeric suffix.
+
+        Returns
+        -------
+        list[str]
+            The titles, where the n-th repetition of a title is suffixed with ``_n``.
+        """
+        seen: dict[str, int] = {}
+        unique: list[str] = []
+        for title in self.titles:
+            count = seen.get(title, 0)
+            seen[title] = count + 1
+            unique.append(title if count == 0 else f"{title}_{count + 1}")
+        return unique
+
+
+class Spectra(TitledSequence[Spectrum]):
+    """The individual spectra stored in a NanoFinder ``.mdt`` file.
+
+    Behaves as a read-only sequence of :class:`Spectrum` objects, and additionally allows lookup
+    by title. It is recommended to create instances using
+    :func:`~nanofinderparser.load.load_mdt` rather than instantiating this class directly.
+
+    Methods
+    -------
+    to_df(spectral_units=None)
+        Export every spectrum to a single DataFrame, one column per spectrum.
+    to_csv(path=Path(), filename="", spectral_units=None, combined=False)
+        Export the spectra to csv file(s).
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> spectra = load_mdt(Path("path/to/your/file.mdt"))  # doctest: +SKIP
+    >>> spectra.titles  # doctest: +SKIP
+    ['Spectrum_1', 'Spectrum_2']
+    >>> spectra["Spectrum_1"].laser_wavelength  # doctest: +SKIP
+    532.0
+    """
+
+    def to_df(
+        self,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+    ) -> pd.DataFrame:
+        """Export every spectrum to a single DataFrame, one column per spectrum.
+
+        Parameters
+        ----------
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            Units in which the spectral axis will be exported, by default None.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame indexed by the spectral axis, with one column per spectrum.
+
+        Notes
+        -----
+        Spectra in the same file may have been recorded with different grating positions, and
+        therefore over different spectral axes. In that case the columns are aligned on the union
+        of the axes, which leaves missing values, and a warning is emitted; exporting each
+        spectrum separately is usually more appropriate.
+        """
+        if not self._items:
+            return pd.DataFrame()
+
+        frames = [spectrum.to_df(spectral_units) for spectrum in self._items]
+        for frame, title in zip(frames, self.unique_titles(), strict=True):
+            frame.columns = pd.Index([title])
+
+        reference = frames[0].index
+        if any(not frame.index.equals(reference) for frame in frames[1:]):
+            logger.warning(
+                "The spectra of %s do not share a common spectral axis; the combined DataFrame "
+                "will contain missing values.",
+                self.source or "this collection",
+            )
+
+        return pd.concat(frames, axis=1)
+
+    def to_csv(
+        self,
+        path: Path = Path(),
+        filename: str = "",
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+        combined: bool = False,
+    ) -> list[Path]:
+        """Export the spectra to csv file(s).
+
+        Parameters
+        ----------
+        path : Path, optional
+            Folder in which the file(s) will be saved, by default Path().
+        filename : str, optional
+            Base name for the file(s), by default "". When exporting separately, it is used as a
+            prefix for the title of each spectrum; when exporting combined, it is the name of the
+            single file. Any extension will be replaced by ".csv".
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            Units in which the spectral axis will be exported, by default None.
+        combined : bool, optional
+            If True, write all the spectra to a single file. If False (the default), write one
+            file per spectrum, which is safer when the spectra do not share a spectral axis.
+
+        Returns
+        -------
+        list[Path]
+            The paths of the written files.
+        """
+        stem = Path(filename).with_suffix("").as_posix() if filename else ""
+        path.mkdir(parents=True, exist_ok=True)
+
+        if combined:
+            file_path = path / (clean_filename(stem) + ".csv")
+            self.to_df(spectral_units).to_csv(file_path, na_rep="NaN")
+            return [file_path]
+
+        written: list[Path] = []
+        for spectrum, title in zip(self._items, self.unique_titles(), strict=True):
+            name = f"{stem}_{title}" if stem else title
+            written.append(spectrum.to_csv(path, filename=name, spectral_units=spectral_units))
+        return written
+
+
+class Images(TitledSequence[Image]):
+    """The 2-D scalar maps stored in a NanoFinder ``.mdt`` file.
+
+    Behaves as a read-only sequence of :class:`Image` objects, and additionally allows lookup by
+    title. It is recommended to create instances using
+    :func:`~nanofinderparser.load.load_mdt_images` rather than instantiating this class directly.
+
+    Methods
+    -------
+    to_csv(path=Path(), filename="")
+        Export the maps to one csv file each.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> images = load_mdt_images(Path("path/to/your/file.mdt"))  # doctest: +SKIP
+    >>> images[0].shape  # doctest: +SKIP
+    (30, 30)
+    """
+
+    def to_csv(self, path: Path = Path(), filename: str = "") -> list[Path]:
+        """Export the maps to one csv file each.
+
+        Maps in the same file generally have different value ranges and units, so they are always
+        written separately.
+
+        Parameters
+        ----------
+        path : Path, optional
+            Folder in which the files will be saved, by default Path().
+        filename : str, optional
+            Prefix for the file names, by default "" (only the title of each map is used).
+            Any extension will be replaced by ".csv".
+
+        Returns
+        -------
+        list[Path]
+            The paths of the written files.
+        """
+        stem = Path(filename).with_suffix("").as_posix() if filename else ""
+        path.mkdir(parents=True, exist_ok=True)
+
+        written: list[Path] = []
+        for image, title in zip(self._items, self.unique_titles(), strict=True):
+            name = f"{stem}_{title}" if stem else title
+            written.append(image.to_csv(path, filename=name))
+        return written
