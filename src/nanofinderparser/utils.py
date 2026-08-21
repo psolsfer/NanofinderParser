@@ -1,8 +1,6 @@
 """Utilities."""
 
-import operator
 from enum import StrEnum
-from functools import reduce
 from typing import Any
 
 
