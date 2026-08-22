@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Any, Literal, Protocol, Self, overload
+from typing import Any, Final, Literal, Protocol, Self, overload
 
 import numpy as np
 import pandas as pd
@@ -16,9 +16,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from nanofinderparser.map import AxisSpec, _nanofinder_mapcoords
 from nanofinderparser.parsers import MdtImageFrame, MdtSpectrumFrame
 from nanofinderparser.units import MdtUnit, Units, convert_spectral_units, validate_units
-from nanofinderparser.utils import SaveMapCoords, validate_savemapcoords
+from nanofinderparser.utils import (
+    SaveMapCoords,
+    parse_vb_bool,
+    validate_savemapcoords,
+)
 
 logger = logging.getLogger(__name__)
+
+# How SMD files write the date and the time of a measurement.
+SMD_DATE_FORMAT: Final[str] = "%Y/%m/%d"
+SMD_TIME_FORMAT: Final[str] = "%H:%M:%S"
 
 
 class VendorVersion(BaseModel):
@@ -72,17 +80,19 @@ class FrameHeader(VendorVersion, BaseModel):
 
     @field_validator("date_model", mode="before")
     @classmethod
-    def parse_date(cls, value: str) -> date:
+    def parse_date(cls, value: str | date) -> date:
         """To properly parse the date."""
-        year, month, day = map(int, value.split("/"))
-        return date(year, month, day)
+        if isinstance(value, date):
+            return value
+        return datetime.strptime(value, SMD_DATE_FORMAT).date()  # noqa: DTZ007
 
     @field_validator("time_model", mode="before")
     @classmethod
-    def parse_time(cls, value: str) -> time:
+    def parse_time(cls, value: str | time) -> time:
         """To properly parse the time."""
-        hour, minute, second = map(int, value.split(":"))
-        return time(hour, minute, second)
+        if isinstance(value, time):
+            return value
+        return datetime.strptime(value, SMD_TIME_FORMAT).time()  # noqa: DTZ007
 
     @property
     def datetime(self) -> datetime:
@@ -181,15 +191,14 @@ class Axis(BaseModel):
         ------
         ValueError
             If a string value other than '0' or '-1' is encountered.
+
+        Notes
+        -----
+        The convention itself lives in :func:`~nanofinderparser.utils.parse_vb_bool`, which the
+        writer uses in the other direction.
         """
-        if isinstance(value, str):
-            if value == "0":
-                return False
-            if value == "-1":
-                return True
-            msg = f"Unexpected boolean string value: {value!r}; expected '0' or '-1'"
-            raise ValueError(msg)
-        return bool(value)
+        # Resolved at call time in the module namespace, so this is the utils function.
+        return parse_vb_bool(value)
 
     @property
     def step_size(self) -> float:
@@ -296,6 +305,87 @@ class Stage3DParameters(VendorVersion, BaseModel):
         return self.axis_size_y, self.axis_size_x
 
 
+@dataclass(frozen=True, slots=True)
+class _ChannelInfoItem:
+    """One of the free-text items of the ``ChannelInfo`` block of an SMD file.
+
+    Attributes
+    ----------
+    label : str
+        Substring that identifies the item when reading a file.
+    alias : str
+        Name of the matching field of :class:`ChannelInfo`, as used in the XML.
+    attribute : str
+        Name of the matching attribute of :class:`ChannelInfo`.
+    parse : Callable[[str], Any]
+        Converts the text after the ``=`` sign into the value of the field.
+    template : str
+        Writes the item back, taking the value as its single argument.
+    """
+
+    label: str
+    alias: str
+    attribute: str
+    parse: Callable[[str], Any]
+    template: str
+
+
+# The items that are written as a plain ``Key = Value`` line, in the order NanoFinder writes
+# them. Reading and writing both go through this table, so the exact wording of an item -- units
+# spelled inside the key included -- is defined in a single place.
+_CHANNEL_INFO_ITEMS: Final[tuple[_ChannelInfoItem, ...]] = (
+    _ChannelInfoItem("Head model", "HeadModel", "head_model", str, "Head model = {}"),
+    _ChannelInfoItem("CCD Width", "CcdWidth", "ccd_width", int, "CCD Width (pixels) = {}"),
+    _ChannelInfoItem("CCD Height", "CcdHeight", "ccd_height", int, "CCD Height (pixels) = {}"),
+    _ChannelInfoItem("Central Pixel", "CentralPixel", "central_pixel", int, "Central Pixel = {}"),
+    _ChannelInfoItem("Pixel Size", "PixelSizeUm", "pixel_size_um", float, "Pixel Size [um] = {:g}"),
+    _ChannelInfoItem(
+        "Temperature", "Temperature", "temperature", float, "Temperature [grad C] = {:.2f}"
+    ),
+    _ChannelInfoItem(
+        "Horizontal binning",
+        "HorizontalBinning",
+        "horizontal_binning",
+        int,
+        "Horizontal binning = {}",
+    ),
+    _ChannelInfoItem("Center Row", "CenterRow", "center_row", int, "Center Row = {}"),
+    _ChannelInfoItem("Track Height", "TrackHeight", "track_height", int, "Track Height = {}"),
+)
+
+_CHANNEL_INFO_BY_LABEL: Final[dict[str, _ChannelInfoItem]] = {
+    item.label: item for item in _CHANNEL_INFO_ITEMS
+}
+
+# Items that do not follow the ``Key = Value`` pattern, and so are read and written on their own.
+_CALIBRATION_LABEL: Final[str] = "Calibration type"
+_CALIBRATION_ITEM: Final[str] = "Calibration type: Nanofinder Calibration"
+_ACQUISITION_LABEL: Final[str] = "Acquisition mode"
+_READOUT_LABEL: Final[str] = "Readout Mode"
+_EXPOSURE_LABEL: Final[str] = "Exposure time"
+
+# NOTE: 'Accumulate' is misspelled in the files, and both spellings are accepted when reading.
+_ACCUMULATE_SPELLINGS: Final[frozenset[str]] = frozenset({"accomulate", "accumulate"})
+_ACCUMULATE_WRITTEN: Final[str] = "Accomulate"
+
+# Order in which the items are written back, matching the files of the instrument.
+_CHANNEL_INFO_LAYOUT: Final[tuple[str, ...]] = (
+    "Head model",
+    "CCD Width",
+    "CCD Height",
+    "Central Pixel",
+    "Pixel Size",
+    _CALIBRATION_LABEL,
+    _ACQUISITION_LABEL,
+    _READOUT_LABEL,
+    _EXPOSURE_LABEL,
+    "Temperature",
+    "Horizontal binning",
+    "Center Row",
+    "Track Height",
+)
+
+
 class ChannelInfo(BaseModel):
     """Model for detailed channel information.
 
@@ -354,6 +444,66 @@ class ChannelInfo(BaseModel):
     track_height: int | None = Field(None, alias="TrackHeight")
     readout_mode: str | None = Field(None, alias="ReadoutMode")
 
+    def to_items(self) -> list[str]:
+        """Write the information back as the free-text items of an SMD file.
+
+        Returns
+        -------
+        list[str]
+            The ``Item0``, ``Item1``, ... lines, in the order the instrument writes them. Fields
+            left at None are skipped, so the result is generally shorter than what a file holds:
+            the items the parser ignores, such as the shift speed or the readout rate, are not
+            written back.
+
+        Notes
+        -----
+        This is the inverse of :meth:`Channel.parse_channel_info`, and both go through the same
+        table of items.
+        """
+        renderers: dict[str, Callable[[], str | None]] = {
+            _CALIBRATION_LABEL: lambda: _CALIBRATION_ITEM,
+            _ACQUISITION_LABEL: self._acquisition_item,
+            _READOUT_LABEL: self._readout_item,
+            _EXPOSURE_LABEL: self._exposure_item,
+        }
+
+        items: list[str] = []
+        for label in _CHANNEL_INFO_LAYOUT:
+            render = renderers.get(label)
+            text = render() if render is not None else self._simple_item(label)
+            if text is not None:
+                items.append(text)
+        return items
+
+    def _simple_item(self, label: str) -> str | None:
+        """Write one of the plain ``Key = Value`` items, or None when it has no value."""
+        item = _CHANNEL_INFO_BY_LABEL[label]
+        value = getattr(self, item.attribute)
+        return None if value is None else item.template.format(value)
+
+    def _acquisition_item(self) -> str | None:
+        """Write the acquisition mode item, or None when the mode is unknown."""
+        if self.acquisition_mode is None:
+            return None
+
+        mode = self.acquisition_mode.lower()
+        text = _ACCUMULATE_WRITTEN if mode in _ACCUMULATE_SPELLINGS else mode.capitalize()
+        if self.accumulation_number is None:
+            return f"{_ACQUISITION_LABEL}: {text}"
+        return f"{_ACQUISITION_LABEL}: {text}. Number in Accumulation = {self.accumulation_number}"
+
+    def _readout_item(self) -> str | None:
+        """Write the readout mode item, or None when it is unknown."""
+        return None if self.readout_mode is None else f"{_READOUT_LABEL}: {self.readout_mode}"
+
+    def _exposure_item(self) -> str | None:
+        """Write the exposure and cycle times, which share a single item."""
+        if self.exposure_time is None:
+            return None
+
+        cycle = self.cycle_time if self.cycle_time is not None else self.exposure_time
+        return f"{_EXPOSURE_LABEL}, [sec] = {self.exposure_time:.4f} Cycle time [sec] = {cycle:.4f}"
+
 
 class Channel(BaseModel):
     """Model for channel information.
@@ -408,61 +558,64 @@ class Channel(BaseModel):
 
     @field_validator("channel_axis_array", mode="before")
     @classmethod
-    def parse_chanelaxisarray(cls, value: str) -> NDArray[np.float64]:
-        """Properly parse the ChannelAxisArray."""
-        return np.fromstring(value, sep=" ")
+    def parse_chanelaxisarray(cls, value: str | Sequence[float] | NDArray[Any]) -> NDArray[Any]:
+        """Properly parse the ChannelAxisArray.
+
+        Parameters
+        ----------
+        value : str | Sequence[float] | NDArray[Any]
+            The space-separated string stored in the XML, or the values themselves when the
+            channel is built in memory rather than read from a file.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The values of the spectral axis.
+        """
+        if isinstance(value, str):
+            return np.fromstring(value, sep=" ")
+        return np.asarray(value, dtype=np.float64)
 
     @field_validator("channel_info", mode="before")
     @classmethod
-    def parse_channel_info(cls, value: dict[str, str]) -> ChannelInfo:
+    def parse_channel_info(cls, value: dict[str, str] | ChannelInfo) -> ChannelInfo:
         """Parse the ChannelInfo free-text items into a structured ChannelInfo object.
 
         Parameters
         ----------
-        value : dict[str, str]
-            Raw dict of ``{ItemN: "Key = Value"}`` strings from the XML.
+        value : dict[str, str] | ChannelInfo
+            Raw dict of ``{ItemN: "Key = Value"}`` strings from the XML, or an already
+            structured object when the channel is built in memory rather than read from a file.
 
         Returns
         -------
         ChannelInfo
             Populated ChannelInfo instance.
         """
+        if isinstance(value, ChannelInfo):
+            return value
+
         info_dict: dict[str, Any] = {}
 
-        parsers: dict[str, tuple[str, Callable[[str], Any]]] = {
-            "Head model": ("HeadModel", str),
-            "CCD Width": ("CcdWidth", int),
-            "CCD Height": ("CcdHeight", int),
-            "Central Pixel": ("CentralPixel", int),
-            "Pixel Size": ("PixelSizeUm", float),
-            "Temperature": ("Temperature", float),
-            "Horizontal binning": ("HorizontalBinning", int),
-            "Center Row": ("CenterRow", int),
-            "Track Height": ("TrackHeight", int),
-        }
-
         for text in value.values():
-            if cls._parse_simple_field(text, parsers, info_dict):
+            if cls._parse_simple_field(text, info_dict):
                 continue
 
-            if "Readout Mode" in text:
+            if _READOUT_LABEL in text:
                 info_dict["ReadoutMode"] = text.split(":", 1)[1].strip()
-            elif "Acquisition mode" in text:
+            elif _ACQUISITION_LABEL in text:
                 cls._parse_acquisition_mode(text, info_dict)
-            elif "Exposure time" in text:
+            elif _EXPOSURE_LABEL in text:
                 cls._parse_exposure_time(text, info_dict)
 
         return ChannelInfo(**info_dict)
 
     @staticmethod
-    def _parse_simple_field(
-        text: str,
-        parsers: dict[str, tuple[str, Callable[[str], Any]]],
-        info: dict[str, Any],
-    ) -> bool:
-        for key, (field, converter) in parsers.items():
-            if key in text:
-                info[field] = converter(text.split("=", 1)[1].strip())
+    def _parse_simple_field(text: str, info: dict[str, Any]) -> bool:
+        """Read one of the plain ``Key = Value`` items, reporting whether the text was one."""
+        for item in _CHANNEL_INFO_ITEMS:
+            if item.label in text:
+                info[item.alias] = item.parse(text.split("=", 1)[1].strip())
                 return True
 
         return False
@@ -477,7 +630,7 @@ class Channel(BaseModel):
 
         info["AcquisitionMode"] = mode
 
-        if mode in {"accomulate", "accumulate"}:  # NOTE There's a typo in smd files
+        if mode in _ACCUMULATE_SPELLINGS:
             info["AccumulationNumber"] = int(mode_info[1].split("=", 1)[1].strip())
 
     @staticmethod
@@ -489,46 +642,6 @@ class Channel(BaseModel):
 
         info["ExposureTime"] = float(parts[1].strip().split()[0])
         info["CycleTime"] = float(parts[2].strip())
-
-    # ??? # REMOVE
-    @staticmethod
-    def _parse_string_field(
-        field: str,
-    ) -> Callable[[str, dict[str, Any]], None]:
-        def parser(text: str, info: dict[str, Any]) -> None:
-            info[field] = text.split("=", 1)[1].strip()
-
-        return parser
-
-    # ??? # REMOVE
-    @staticmethod
-    def _parse_int_field(
-        field: str,
-    ) -> Callable[[str, dict[str, Any]], None]:
-        def parser(text: str, info: dict[str, Any]) -> None:
-            info[field] = int(text.split("=", 1)[1].strip())
-
-        return parser
-
-    # ??? # REMOVE
-    @staticmethod
-    def _parse_float_field(
-        field: str,
-    ) -> Callable[[str, dict[str, Any]], None]:
-        def parser(text: str, info: dict[str, Any]) -> None:
-            info[field] = float(text.split("=", 1)[1].strip())
-
-        return parser
-
-    # ??? # REMOVE
-    @staticmethod
-    def _parse_colon_field(
-        field: str,
-    ) -> Callable[[str, dict[str, Any]], None]:
-        def parser(text: str, info: dict[str, Any]) -> None:
-            info[field] = text.split(":", 1)[1].strip()
-
-        return parser
 
 
 class DataCalibration(VendorVersion):
@@ -618,11 +731,17 @@ class Mapping:
         Absolute physical start position of the scan in the (x,y,z) axes.
     map_size : tuple[float, float, float]
         Size of the map in the (x,y,z) axes, with the corresponding units for each axis.
+    expected_data_size : int
+        Number of values the scan parameters describe.
 
     Methods
     -------
     get_spectra(channel: int = 0)
         Return data reshaped as (n_spectra, spectral_len).
+    single_channel()
+        Return the only detector channel of the mapping, checking it is supported.
+    to_smd(file)
+        Write the mapping back as a NanoFinder SMD file.
     get_map(channel: int = 0)
         Return data reshaped as the spatial map: (slow_axis, fast_axis, spectral_len).
     get_spectral_axis(channel: int = 0)
@@ -718,6 +837,56 @@ class Mapping:
         encountered, so the reshape logic assumes a single contiguous data block.
         """
         return self._data.reshape(-1, self.get_spectral_axis_len(channel=channel))
+
+    def single_channel(self) -> Channel:
+        """Return the only detector channel of the mapping.
+
+        Returns
+        -------
+        Channel
+            The single detector channel the mapping holds.
+
+        Raises
+        ------
+        NotImplementedError
+            If the mapping holds more than one detector channel, or more than one acquisition
+            per spatial point, neither of which is supported yet.
+
+        Notes
+        -----
+        Both reading and writing a file go through this check, so the two agree on what a
+        supported mapping is.
+        """
+        channels = self.scanned_frame_parameters.data_calibration.channels
+        subject = str(self.source) if self.source is not None else "The mapping"
+
+        if len(channels) != 1:
+            msg = (
+                f"{subject} declares {len(channels)} detector channels; only single-channel SMD "
+                "files are supported."
+            )
+            raise NotImplementedError(msg)
+
+        channel = channels[0]
+        if channel.series_size != 1:
+            msg = (
+                f"{subject} stores {channel.series_size} acquisitions per spatial point "
+                "(SeriesSize); only one per point is supported."
+            )
+            raise NotImplementedError(msg)
+
+        return channel
+
+    @property
+    def expected_data_size(self) -> int:
+        """Number of values the scan parameters of the mapping describe.
+
+        This is the number of points of the grid times the number of points of each spectrum,
+        which is what the binary block of the file must hold.
+        """
+        channel = self.single_channel()
+        x_steps, y_steps, z_steps = self.map_steps
+        return x_steps * y_steps * z_steps * channel.series_size * channel.channel_size
 
     def get_spectral_axis(
         self,
@@ -1037,6 +1206,38 @@ class Mapping:
             data = data.reset_index(drop=True)
 
         return data, mapcoords
+
+    def to_smd(self, file: Path | str) -> Path:
+        """Write the mapping back as a NanoFinder SMD file.
+
+        Parameters
+        ----------
+        file : Path | str
+            Path of the file to write. Parent directories are created when missing.
+
+        Returns
+        -------
+        Path
+            The path of the file just written.
+
+        Raises
+        ------
+        NotImplementedError
+            If the mapping holds more than one detector channel, or more than one acquisition
+            per spatial point.
+        ValueError
+            If the number of values does not match the grid and spectrum length of the header.
+        OSError
+            If the file cannot be written.
+
+        Notes
+        -----
+        Only the fields this class models are written; see
+        :func:`~nanofinderparser.write.write_smd`.
+        """
+        from nanofinderparser.write import write_smd  # noqa: PLC0415
+
+        return write_smd(self, file)
 
 
 # Number of arrays NanoFinder stores per spectrum frame: the spectral axis and the intensities.

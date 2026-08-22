@@ -1,7 +1,56 @@
 """Utilities."""
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
+
+# NanoFinder is written in Visual Basic, whose booleans are -1 for true and 0 for false.
+VB_TRUE: Final[str] = "-1"
+VB_FALSE: Final[str] = "0"
+
+
+def parse_vb_bool(value: str | bool | int) -> bool:
+    """Parse the Visual Basic boolean convention used by NanoFinder files.
+
+    Parameters
+    ----------
+    value : str | bool | int
+        Raw value from the file: ``"0"``/``0`` for false, ``"-1"``/``-1`` for true. Booleans and
+        other integers are converted as they are.
+
+    Returns
+    -------
+    bool
+        The parsed value.
+
+    Raises
+    ------
+    ValueError
+        If a string value other than ``"0"`` or ``"-1"`` is encountered.
+    """
+    if isinstance(value, str):
+        if value == VB_FALSE:
+            return False
+        if value == VB_TRUE:
+            return True
+        msg = f"Unexpected boolean string value: {value!r}; expected {VB_FALSE!r} or {VB_TRUE!r}"
+        raise ValueError(msg)
+    return bool(value)
+
+
+def format_vb_bool(value: bool) -> str:
+    """Write a boolean the way NanoFinder files store it.
+
+    Parameters
+    ----------
+    value : bool
+        The value to write.
+
+    Returns
+    -------
+    str
+        ``"-1"`` for true and ``"0"`` for false.
+    """
+    return VB_TRUE if value else VB_FALSE
 
 
 class SaveMapCoords(StrEnum):

@@ -101,24 +101,10 @@ def _validate_smd_data_block(mapping: Mapping, file: Path) -> None:
     ValueError
         If the file holds fewer values than its header declares.
     """
-    channels = mapping.scanned_frame_parameters.data_calibration.channels
-    if len(channels) != 1:
-        msg = (
-            f"{file} declares {len(channels)} detector channels; only single-channel SMD files "
-            "are supported."
-        )
-        raise NotImplementedError(msg)
-
-    channel = channels[0]
-    if channel.series_size != 1:
-        msg = (
-            f"{file} stores {channel.series_size} acquisitions per spatial point (SeriesSize); "
-            "only one per point is supported."
-        )
-        raise NotImplementedError(msg)
+    channel = mapping.single_channel()
 
     x_steps, y_steps, z_steps = mapping.map_steps
-    expected = x_steps * y_steps * z_steps * channel.series_size * channel.channel_size
+    expected = mapping.expected_data_size
     found = int(mapping.data.size)
 
     declared_bytes = mapping.scanned_frame_parameters.data_block_size_bytes

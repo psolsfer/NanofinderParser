@@ -37,8 +37,13 @@ def read_xml_part(file: Path, position: int = 0) -> tuple[dict[str, Any], int]:
         first_tag = None
         f.seek(position)  # Move to the indicated position
         for line in f:
-            if first_tag is None and not line.strip().startswith(b"<?xml"):
-                first_tag = line.split()[0][1:-1]
+            stripped = line.strip()
+            if (
+                first_tag is None
+                and stripped.startswith(b"<")
+                and not stripped.startswith(b"<?xml")
+            ):
+                first_tag = stripped.split()[0][1:].rstrip(b">")
 
             xml_content += line
 
@@ -69,7 +74,14 @@ _NUMPY_DTYPES: Final[dict[str, str]] = {
 }
 
 
-def read_binary_part(file: Path, position: int = 0, data_format: str = "f") -> NDArray[Any]:
+# NanoFinder writes the binary block of SMD files as little-endian float32.
+SMD_DATA_FORMAT: Final[str] = "f"
+SMD_DTYPE: Final[str] = _NUMPY_DTYPES[SMD_DATA_FORMAT]
+
+
+def read_binary_part(
+    file: Path, position: int = 0, data_format: str = SMD_DATA_FORMAT
+) -> NDArray[Any]:
     """Read the binary part of a file.
 
     Parameters

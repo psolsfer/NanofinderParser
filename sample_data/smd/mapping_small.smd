@@ -80,7 +80,7 @@
           <AxisName>X</AxisName>
           <AxisMaker>XYZ NI-DACmx</AxisMaker>
           <AxisUnitName>nm</AxisUnitName>
-          <AxisGuid>{DEB192EB-5D7B-489B-A1F6-154F34CF6479}</AxisGuid>
+          <AxisGuid>{00000000-0000-0000-0000-000000000000}</AxisGuid>
           <AxisCountMax>65535</AxisCountMax>
           <AxisCountMin>0</AxisCountMin>
           <AxisCountCurr>51738</AxisCountCurr>
@@ -103,7 +103,7 @@
           <AxisName>Y</AxisName>
           <AxisMaker>XYZ NI-DACmx</AxisMaker>
           <AxisUnitName>nm</AxisUnitName>
-          <AxisGuid>{DEB192EB-5D7B-489B-A1F6-154F34CF6479}</AxisGuid>
+          <AxisGuid>{00000000-0000-0000-0000-000000000000}</AxisGuid>
           <AxisCountMax>65535</AxisCountMax>
           <AxisCountMin>0</AxisCountMin>
           <AxisCountCurr>38580</AxisCountCurr>
@@ -126,7 +126,7 @@
           <AxisName>Z</AxisName>
           <AxisMaker>XYZ NI-DACmx</AxisMaker>
           <AxisUnitName>nm</AxisUnitName>
-          <AxisGuid>{DEB192EB-5D7B-489B-A1F6-154F34CF6479}</AxisGuid>
+          <AxisGuid>{00000000-0000-0000-0000-000000000000}</AxisGuid>
           <AxisCountMax>65535</AxisCountMax>
           <AxisCountMin>0</AxisCountMin>
           <AxisCountCurr>20884</AxisCountCurr>
@@ -164,7 +164,7 @@
       <SeriesRmnInd>2</SeriesRmnInd>
       <DataDimentions>
         <Channel0>
-          <DeviceGuid>{2429B3BD-59FE-4575-9C4A-D7828D9837C6}</DeviceGuid>
+          <DeviceGuid>{00000000-0000-0000-0000-000000000000}</DeviceGuid>
           <DeviceName>Andor CCD</DeviceName>
           <DeviceChannels>1</DeviceChannels>
           <DeviceChannel>0</DeviceChannel>
