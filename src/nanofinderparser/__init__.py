@@ -15,6 +15,13 @@ from nanofinderparser.load import (
     load_smd,
     load_smd_folder,
 )
+from nanofinderparser.samples import (
+    SAMPLES,
+    SampleInfo,
+    SampleName,
+    sample_mapping,
+    sample_spec,
+)
 from nanofinderparser.synthetic import (
     BaselineSpec,
     InstrumentSpec,
@@ -26,16 +33,24 @@ from nanofinderparser.synthetic import (
     build_mapping,
     build_spectra,
     create_smd,
+    map_band,
+    map_blob,
+    map_disk,
+    map_product,
+    map_ramp,
 )
 from nanofinderparser.write import write_smd
 
 __all__ = [
+    "SAMPLES",
     "BaselineSpec",
     "InstrumentSpec",
     "MapSpec",
     "MappingSpec",
     "NoiseSpec",
     "PeakSpec",
+    "SampleInfo",
+    "SampleName",
     "SpectralAxisSpec",
     "build_mapping",
     "build_spectra",
@@ -46,5 +61,12 @@ __all__ = [
     "load_mdt_images",
     "load_smd",
     "load_smd_folder",
+    "map_band",
+    "map_blob",
+    "map_disk",
+    "map_product",
+    "map_ramp",
+    "sample_mapping",
+    "sample_spec",
     "write_smd",
 ]

@@ -9,6 +9,12 @@ The result is either a :class:`~nanofinderparser.models.Mapping` --- the same ob
 :func:`~nanofinderparser.load.load_smd` returns --- or an actual ``.smd`` file written through
 :func:`~nanofinderparser.write.write_smd`.
 
+Writing a spec from scratch is not always needed: :mod:`nanofinderparser.samples` keeps a few
+ready-made ones, each imitating a material that turns up often under the microscope. The
+``map_*`` functions below draw the simple shapes those samples are built from --- a gradient, a
+bump, a patch, a stripe --- and are addressed in fractions of the scanned area, so a spec keeps
+its look whatever the size of the map.
+
 Examples
 --------
 A 20 x 15 mapping with one Gaussian peak whose position drifts along x and whose intensity is
@@ -87,6 +93,9 @@ type MapParameter = (
 # Peak width below which a lineshape would collapse to a spike.
 _MIN_FWHM: Final[float] = 1e-12
 
+# Radius below which a shape drawn over the map would collapse to a point.
+_MIN_RADIUS: Final[float] = 1e-12
+
 
 def _evaluate(
     value: MapParameter,
@@ -127,6 +136,294 @@ def _evaluate(
             f"{x.shape} shape of the map."
         )
         raise ValueError(msg) from None
+
+
+# ---------------------------------------------------------------------------
+# Shapes
+#
+# Factories returning map parameters that draw a simple shape over the scanned area. They are
+# addressed in fractions of the extent of the map -- 0 at the first point of an axis, 1 at the
+# last one -- so that a spec keeps its look when the size or the step of the scan changes.
+# ---------------------------------------------------------------------------
+
+
+def _extent(values: NDArray[np.float64]) -> tuple[float, float]:
+    """Origin and length of a coordinate grid.
+
+    Parameters
+    ----------
+    values : NDArray[np.float64]
+        Coordinates of every point of the map along one axis.
+
+    Returns
+    -------
+    origin : float
+        Smallest coordinate.
+    length : float
+        Distance between the first and the last point, zero for a single-point axis.
+    """
+    return float(values.min()), float(np.ptp(values))
+
+
+def _fraction(values: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Express a coordinate grid as a fraction of its own extent.
+
+    Parameters
+    ----------
+    values : NDArray[np.float64]
+        Coordinates of every point of the map along one axis.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Zero at the first point of the axis, one at the last one. All zeros when the axis holds
+        a single point.
+    """
+    origin, length = _extent(values)
+    if length == 0.0:
+        return np.zeros_like(values)
+    return (values - origin) / length
+
+
+def _smoothstep(edge: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Ease a transition between 0 and 1.
+
+    Parameters
+    ----------
+    edge : NDArray[np.float64]
+        How far past the edge every point lies, in units of the width of the transition.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        0 before the edge, 1 after it, and a smooth ramp with zero slope at both ends between
+        them.
+    """
+    clipped = np.clip(edge, 0.0, 1.0)
+    eased: NDArray[np.float64] = clipped**2 * (3.0 - 2.0 * clipped)
+    return eased
+
+
+def map_ramp(
+    low: float,
+    high: float,
+    *,
+    axis: Literal["x", "y"] = "x",
+) -> MapParameter:
+    """Draw a value changing linearly across the map.
+
+    Parameters
+    ----------
+    low, high : float
+        Value at the first and at the last point of `axis`.
+    axis : {"x", "y"}, optional
+        Direction along which the value changes, by default ``"x"``.
+
+    Returns
+    -------
+    MapParameter
+        A map parameter usable anywhere in a :class:`MappingSpec`.
+
+    Examples
+    --------
+    >>> strain = map_ramp(1582.0, 1577.0)
+    >>> spec = MappingSpec(
+    ...     map=MapSpec(x_size=3, y_size=2),
+    ...     peaks=[PeakSpec(center=strain, fwhm=5.0, amplitude=100.0)],
+    ... )
+    >>> build_spectra(spec).shape
+    (2, 3, 512)
+    """
+
+    def shape(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
+        fraction = _fraction(x if axis == "x" else y)
+        return low + (high - low) * fraction
+
+    return shape
+
+
+def map_blob(
+    value: float,
+    background: float = 0.0,
+    *,
+    cx: float = 0.5,
+    cy: float = 0.5,
+    radius: float = 0.2,
+) -> MapParameter:
+    """Draw a round Gaussian bump over the map.
+
+    Parameters
+    ----------
+    value : float
+        Value at the center of the bump.
+    background : float, optional
+        Value far away from it, by default 0.0.
+    cx, cy : float, optional
+        Center of the bump, as a fraction of the extent of each axis, by default the middle of
+        the map.
+    radius : float, optional
+        Standard deviation of the bump, as a fraction of the longest extent of the map, by
+        default 0.2.
+
+    Returns
+    -------
+    MapParameter
+        A map parameter usable anywhere in a :class:`MappingSpec`.
+    """
+
+    def shape(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
+        distance = _distance(x, y, cx, cy)
+        weight = np.exp(-0.5 * (distance / max(radius, _MIN_RADIUS)) ** 2)
+        return background + (value - background) * weight
+
+    return shape
+
+
+def map_disk(  # noqa: PLR0913
+    inside: float,
+    outside: float,
+    *,
+    cx: float = 0.5,
+    cy: float = 0.5,
+    radius: float = 0.25,
+    softness: float = 0.0,
+) -> MapParameter:
+    """Draw a round patch over the map.
+
+    Parameters
+    ----------
+    inside, outside : float
+        Value within and beyond the patch.
+    cx, cy : float, optional
+        Center of the patch, as a fraction of the extent of each axis, by default the middle of
+        the map.
+    radius : float, optional
+        Radius of the patch, as a fraction of the longest extent of the map, by default 0.25.
+    softness : float, optional
+        Width of the transition at the edge of the patch, in the same fractional units, by
+        default 0.0, which gives a sharp edge.
+
+    Returns
+    -------
+    MapParameter
+        A map parameter usable anywhere in a :class:`MappingSpec`.
+    """
+
+    def shape(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
+        distance = _distance(x, y, cx, cy)
+        if softness <= 0.0:
+            return np.where(distance <= radius, inside, outside)
+        weight = _smoothstep((radius - distance) / softness + 0.5)
+        return outside + (inside - outside) * weight
+
+    return shape
+
+
+def map_band(  # noqa: PLR0913
+    inside: float,
+    outside: float,
+    *,
+    start: float = 0.0,
+    stop: float = 0.15,
+    axis: Literal["x", "y"] = "x",
+    softness: float = 0.0,
+) -> MapParameter:
+    """Draw a stripe running across the map.
+
+    Parameters
+    ----------
+    inside, outside : float
+        Value within and beyond the stripe.
+    start, stop : float
+        Limits of the stripe along `axis`, as a fraction of its extent.
+    axis : {"x", "y"}, optional
+        Direction along which the stripe is delimited, by default ``"x"``, which gives a stripe
+        parallel to the y axis.
+    softness : float, optional
+        Width of the transition at the edges of the stripe, in the same fractional units, by
+        default 0.0, which gives sharp edges. The transition is centered on each limit, so half
+        of it falls inside the stripe. Put a limit beyond the map, as in ``start=-0.05``, for a
+        stripe that reaches an edge of the scan at full value.
+
+    Returns
+    -------
+    MapParameter
+        A map parameter usable anywhere in a :class:`MappingSpec`.
+    """
+
+    def shape(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
+        fraction = _fraction(x if axis == "x" else y)
+        if softness <= 0.0:
+            return np.where((fraction >= start) & (fraction <= stop), inside, outside)
+        weight = _smoothstep((fraction - start) / softness + 0.5) * _smoothstep(
+            (stop - fraction) / softness + 0.5
+        )
+        return outside + (inside - outside) * weight
+
+    return shape
+
+
+def map_product(*parts: MapParameter) -> MapParameter:
+    """Multiply several map parameters together.
+
+    Handy to modulate one shape by another, for instance to dim a peak over a patch of a flake
+    that does not cover the whole scanned area.
+
+    Parameters
+    ----------
+    *parts : MapParameter
+        The parameters to multiply. Each of them may be a number, an array, or a callable.
+
+    Returns
+    -------
+    MapParameter
+        A map parameter worth the product of all the parts at every point of the map.
+
+    Examples
+    --------
+    >>> flake = map_disk(1.0, 0.0, radius=0.4)
+    >>> bilayer = map_disk(0.3, 1.0, radius=0.15)
+    >>> amplitude = map_product(900.0, flake, bilayer)
+    """
+
+    def shape(x: NDArray[np.float64], y: NDArray[np.float64]) -> NDArray[np.float64]:
+        result = np.ones_like(x)
+        for index, part in enumerate(parts):
+            result = result * _evaluate(part, x, y, f"factor {index}")
+        return result
+
+    return shape
+
+
+def _distance(
+    x: NDArray[np.float64],
+    y: NDArray[np.float64],
+    cx: float,
+    cy: float,
+) -> NDArray[np.float64]:
+    """Distance from every point of the map to a point given in fractional coordinates.
+
+    Parameters
+    ----------
+    x, y : NDArray[np.float64]
+        Physical coordinates of every point of the map.
+    cx, cy : float
+        The point of interest, as a fraction of the extent of each axis.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        The distance, as a fraction of the longest extent of the map, so that a shape built on
+        it stays round whatever the aspect ratio of the scan.
+    """
+    x_origin, x_length = _extent(x)
+    y_origin, y_length = _extent(y)
+    scale = max(x_length, y_length) or 1.0
+
+    offset_x = (x - (x_origin + cx * x_length)) / scale
+    offset_y = (y - (y_origin + cy * y_length)) / scale
+    distance: NDArray[np.float64] = np.hypot(offset_x, offset_y)
+    return distance
 
 
 @dataclass(frozen=True, slots=True)

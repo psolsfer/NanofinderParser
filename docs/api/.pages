@@ -5,6 +5,7 @@ nav:
     - load.md
     - models.md
     - parsers.md
+    - samples.md
     - synthetic.md
     - units.md
     - write.md
