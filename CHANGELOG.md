@@ -1,3 +1,10 @@
+## v0.7.0 (2026-08-22)
+
+### Feat
+
+- **synthetic**: add a catalog of ready-made synthetic samples
+- add writing of smd files
+
 ## v0.6.0 (2026-08-21)
 
 ### Feat
