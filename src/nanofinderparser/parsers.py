@@ -14,6 +14,11 @@ from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
+# Root element of the XML header of each kind of NanoFinder file built on this container: a
+# spatial mapping (".smd") and a kinetic series measured at a single point (".s1d").
+SMD_ROOT: Final[str] = "SCANDATA"
+S1D_ROOT: Final[str] = "SPECTRADATA"
+
 
 def read_xml_part(file: Path, position: int = 0) -> tuple[dict[str, Any], int]:
     """Read the XML part of a file.

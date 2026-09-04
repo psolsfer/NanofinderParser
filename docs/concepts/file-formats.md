@@ -1,6 +1,6 @@
 # File formats
 
-NanoFinder writes two file formats, and this page describes how both are laid out on disk. It
+NanoFinder writes three file formats, and this page describes how each is laid out on disk. It
 is meant as a reference for anyone maintaining the parsers, or trying to make sense of a file
 that does not load.
 
@@ -11,16 +11,17 @@ that does not load.
     [NTMDTRead.py](https://github.com/psolsfer/NTMDTRead.py). Fields not used by the parsers are
     described only where their size matters for finding the next field.
 
-| | `.smd` | `.mdt` |
-| --- | --- | --- |
-| Written for | A mapping: one spectrum per point of a spatial scan | Individual spectra, and 2-D scalar maps |
-| Structure | One XML header + one binary block | A sequence of self-contained binary frames |
-| Holds | Exactly one measurement | Any number of measurements, of both kinds |
-| Spectral data | `float32`, full precision | `float32`, full precision |
-| Map data | Full spectra | A single `int16` value per point |
-| Stage coordinates | Yes, from the scan parameters | Only for maps; spectra carry none |
-| Origin | NanoFinder's own format | NT-MDT's format, shared with NTEGRA and Gwyddion |
-| Parsed by | `load_smd` | `load_mdt`, `load_mdt_images` |
+| | `.smd` | `.s1d` | `.mdt` |
+| --- | --- | --- | --- |
+| Written for | A mapping: one spectrum per point of a spatial scan | A kinetic series: one spectrum per time step, at a single point | Individual spectra, and 2-D scalar maps |
+| Structure | One XML header + one binary block | One XML header + one binary block | A sequence of self-contained binary frames |
+| Holds | Exactly one measurement | Exactly one measurement | Any number of measurements, of both kinds |
+| Spectra indexed by | Stage coordinates | Time | Nothing; each is standalone |
+| Spectral data | `float32`, full precision | `float32`, full precision | `float32`, full precision |
+| Map data | Full spectra | — | A single `int16` value per point |
+| Stage coordinates | Yes, from the scan parameters | A single position | Only for maps; spectra carry none |
+| Origin | NanoFinder's own format | NanoFinder's own format | NT-MDT's format, shared with NTEGRA and Gwyddion |
+| Parsed by | `load_smd` | `load_s1d` | `load_mdt`, `load_mdt_images` |
 
 ## SMD — mapping files
 
@@ -118,7 +119,8 @@ channel; only single-channel files have been seen so far.
 | `ChannelAxisName`, `ChannelAxisUnit` | e.g. `Wavelength`, `nm` |
 | `ChannelAxisLaserWl` | excitation wavelength used for the calibration |
 | `ChannelAxisArray` | the spectral axis: `ChannelSize` space-separated decimals |
-| `SeriesSize` | acquisitions per spatial point; only `1` is supported |
+| `SeriesSize` | acquisitions per spatial point; `1` in a mapping, the length of the series in an S1D file |
+| `SeriesAxisArray` | the series axis: `SeriesSize` space-separated integers, counting from one |
 | `ChannelInfo` | free-text `Item0`, `Item1`, … |
 
 The spectral axis is stored explicitly, value by value, rather than as a polynomial calibration —
@@ -162,6 +164,59 @@ A 50 × 50 map of 1024-point spectra gives 2500 spectra, 2 560 000 values and
     NanoFinder's convention is that y starts at the *bottom* of the mapping area.
     `Mapping.to_df` re-orders the rows accordingly, so the exported order is not the
     acquisition order.
+
+## S1D — kinetic series
+
+A kinetic series is a set of spectra measured one after another at a *single* point of the
+sample, at a fixed period. NanoFinder stores it in the same container as a mapping: the same XML
+header, the same raw `float32` block, the same models. Only three things differ.
+
+**The root element is `SPECTRADATA`, not `SCANDATA`.** Everything below it is laid out exactly as
+in an SMD file, so `read_xml_part` — which picks up whatever the first tag is — reads both. The
+loaders check the root and refuse the wrong format rather than mis-reading it.
+
+**The spectra are indexed by time, not by position.** `AxisSizeX`, `AxisSizeY` and `AxisSizeZ`
+are all `1`, and the length of the measurement lives in `SeriesSize` instead. The number of values
+in the binary block is therefore
+
+```text
+number of values = SeriesSize × ChannelSize
+```
+
+and the spectra run in acquisition order, so reshaping to `(SeriesSize, ChannelSize)` gives the
+series directly — what `KineticSeries.get_spectra` does. The stage axes still carry a position,
+which is where the series was measured.
+
+**The timings are in `ChannelInfo`.** The instrument records no timestamp per spectrum: it records
+the period it was set up with, in the same free-text items that carry the exposure time of a
+mapping, with two extra fields:
+
+```xml
+<Item6>Acquisition mode: Kinetic series. Number in Accumulation = 1  Number in Kinetic series = 500</Item6>
+<Item8>Exposure time, [sec] = 0.1000 Cycle time [sec] = 0.2304 Kinetic Cycle time [sec] = 0.2304</Item8>
+```
+
+Those numbers are the four settings that define a kinetic series on the detector:
+
+| Setting | Where it is | Meaning |
+| --- | --- | --- |
+| Exposure time | `Exposure time, [sec] =` | seconds the detector collects light for one scan |
+| Number of accumulations | `Number in Accumulation =` | scans added together to make one member of the series |
+| Accumulate cycle time | `Cycle time [sec] =` | period between those accumulated scans |
+| Number in kinetic series | `Number in Kinetic series =` | members of the series; equals `SeriesSize` |
+| Kinetic cycle time | `Kinetic Cycle time [sec] =` | period between consecutive members |
+
+The kinetic cycle time is the step of the time axis, and it is longer than the exposure time
+because each scan has to be read out of the detector. With one accumulation per member the
+accumulate cycle time and the kinetic cycle time coincide, which is the common case;
+`KineticSeries.time_step` falls back from one to the other, and finally to the exposure time,
+so a file missing a field still yields a time axis.
+
+!!! warning "The time axis is nominal"
+    Nothing in the file timestamps an individual spectrum, so `KineticSeries.time_axis` is
+    `numpy.arange(SeriesSize) * kinetic_cycle_time` and `KineticSeries.timestamps` offsets the
+    `Date`/`Time` of the header by it. Both assume the series ran at exactly the period it was
+    set up with, which is what the instrument intends but not what it measures.
 
 ## MDT — spectra and 2-D maps
 
@@ -299,12 +354,18 @@ error, so an unfamiliar frame in the middle of a file does not make the rest unr
 A few practical points follow from the above, and are worth keeping in mind when changing the
 code:
 
-* **An SMD file has no index.** The binary block is found by scanning text, so anything that
-  changes how the header is read (encoding, line endings, a stray blank line) breaks the data
-  read as well.
+* **An SMD or S1D file has no index.** The binary block is found by scanning text, so anything
+  that changes how the header is read (encoding, line endings, a stray blank line) breaks the
+  data read as well.
 * **`DataBlockSizeBytes` is a checksum in disguise.** It should agree with
   `4 × AxisSizeX × AxisSizeY × AxisSizeZ × SeriesSize × ChannelSize`; a mismatch means the file is
   truncated or holds something the parser does not model yet.
+* **The root element is the only thing that names the format.** An `.s1d` file is an SMD file
+  whose grid collapsed to a point and whose `SeriesSize` grew, so nothing but `SPECTRADATA` vs
+  `SCANDATA` distinguishes the two before the header is parsed.
+* **`ChannelInfo` is free text, and its wording varies with the acquisition mode.** The same
+  item carries two values for a mapping and three for a kinetic series, so the parser reads the
+  first token after each `=` sign rather than the rest of the field.
 * **MDT frames are only reachable in order.** There is no seeking to frame *n*, which is why
   `read_mdt_frames` reads the whole file at once.
 * **MDT spectra have no coordinates.** Nothing in a spectrum frame says where on the sample it

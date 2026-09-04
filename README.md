@@ -33,6 +33,7 @@
 ## Features
 
 - Parse SMD (Scanned Measurement Data) mapping files produced by NanoFinder instruments
+- Parse S1D files, which hold a kinetic series: spectra measured over time at a single point
 - Parse MDT files, which hold individual spectra and 2-D maps rather than a mapping
 - Convert spectral data between different units (nm, cm<sup>-1</sup>, eV, Raman shift)
 - Export parsed data to CSV files or pandas DataFrames
@@ -81,6 +82,20 @@ print(f"Map size: {mapping_data.map_size}")
 mapping_data.to_csv(path=Path("output"), spectral_units="raman_shift")
 ```
 
+A kinetic series — spectra recorded one after another at a single point — is saved as an S1D
+file, and loaded with `load_s1d`:
+
+```python
+from pathlib import Path
+from nanofinderparser import load_s1d
+
+series = load_s1d(Path("path/to/your/s1d/file.s1d"))
+
+print(f"{len(series)} spectra, {series.kinetic_cycle_time} s apart")
+print(series.time_axis)  # seconds from the start of the series
+series.to_csv(path=Path("output"), spectral_units="raman_shift")
+```
+
 Individual spectra are saved by NanoFinder as MDT files, which are loaded with `load_mdt`:
 
 ```python
@@ -99,11 +114,15 @@ You can also use NanofinderParser from the command line:
 # Convert an SMD file to CSV
 nanofinderparser convert path/to/your/smd/file.smd output_folder --units nm
 
+# Convert a kinetic series to CSV
+nanofinderparser convert-s1d path/to/your/s1d/file.s1d output_folder --units nm
+
 # Convert an MDT file of individual spectra to CSV
 nanofinderparser convert-mdt path/to/your/mdt/file.mdt output_folder --units nm
 
 # Display information about a file
 nanofinderparser info path/to/your/smd/file.smd
+nanofinderparser info-s1d path/to/your/s1d/file.s1d
 nanofinderparser info-mdt path/to/your/mdt/file.mdt
 ```
 

@@ -61,14 +61,16 @@ import numpy as np
 from numpy.typing import NDArray
 
 from nanofinderparser.models import (
+    KINETIC_SERIES_MODE,
     SMD_DATE_FORMAT,
     SMD_TIME_FORMAT,
     Channel,
     ChannelInfo,
+    KineticSeries,
     Mapping,
 )
 from nanofinderparser.units import Units, convert_spectral_units
-from nanofinderparser.write import DEFAULT_VENDOR, NIL_GUID, write_smd
+from nanofinderparser.write import DEFAULT_VENDOR, NIL_GUID, write_s1d, write_smd
 
 logger = logging.getLogger(__name__)
 
@@ -627,6 +629,9 @@ class InstrumentSpec:
         Exposure time of a single acquisition, in seconds.
     cycle_time_s : float | None
         Time between consecutive acquisitions, in seconds. None reuses `exposure_time_s`.
+    kinetic_cycle_time_s : float | None
+        Time between consecutive members of a kinetic series, in seconds. Only written to a
+        kinetic series; None reuses `cycle_time_s`, and so `exposure_time_s` in turn.
     accumulations : int
         Number of accumulated acquisitions per point.
     temperature_c : float
@@ -663,6 +668,7 @@ class InstrumentSpec:
     pinhole_size_um: float = 50.0
     exposure_time_s: float = 1.0
     cycle_time_s: float | None = None
+    kinetic_cycle_time_s: float | None = None
     accumulations: int = 1
     temperature_c: float = -60.0
     system_name: str = "TII Nanofinder"
@@ -709,6 +715,130 @@ class MappingSpec:
     baseline: BaselineSpec = field(default_factory=BaselineSpec)
     noise: NoiseSpec = field(default_factory=NoiseSpec)
     instrument: InstrumentSpec = field(default_factory=InstrumentSpec)
+
+
+def _cycle_time(instrument: InstrumentSpec) -> float:
+    """Time between consecutive acquisitions of an instrument, in seconds.
+
+    Parameters
+    ----------
+    instrument : InstrumentSpec
+        The acquisition settings.
+
+    Returns
+    -------
+    float
+        The cycle time, falling back to the exposure time when it is not given.
+    """
+    if instrument.cycle_time_s is not None:
+        return instrument.cycle_time_s
+    return instrument.exposure_time_s
+
+
+def _kinetic_cycle_time(instrument: InstrumentSpec) -> float:
+    """Time between consecutive members of a kinetic series, in seconds.
+
+    Parameters
+    ----------
+    instrument : InstrumentSpec
+        The acquisition settings.
+
+    Returns
+    -------
+    float
+        The kinetic cycle time, falling back to the cycle time when it is not given.
+    """
+    if instrument.kinetic_cycle_time_s is not None:
+        return instrument.kinetic_cycle_time_s
+    return _cycle_time(instrument)
+
+
+@dataclass(frozen=True, slots=True)
+class KineticSpec:
+    """Complete description of a synthetic kinetic series.
+
+    A kinetic series holds spectra measured one after another at a single point, so the axis
+    along which its spectra change is time rather than a pair of stage coordinates. The peaks,
+    the baseline and the noise are described exactly as for a mapping, and every quantity that a
+    :class:`MappingSpec` lets vary across the scan varies here across the series: the first
+    argument each callable receives is the time of the spectrum in seconds, and the second is a
+    zero array, since a series spans no second dimension.
+
+    Attributes
+    ----------
+    series_size : int
+        Number of spectra of the series.
+    spectral_axis : SpectralAxisSpec
+        Spectral axis shared by every spectrum.
+    peaks : Sequence[PeakSpec]
+        Peaks to add on top of the baseline. May be empty.
+    baseline : BaselineSpec
+        Smooth background under the peaks.
+    noise : NoiseSpec
+        Noise added to the spectra.
+    instrument : InstrumentSpec
+        Acquisition settings written to the header of the file. Its `kinetic_cycle_time_s` sets
+        the spacing of the spectra in time.
+    position : tuple[float, float, float]
+        Stage position at which the series was measured, in `position_units`.
+    position_units : str
+        Units of the stage position.
+
+    Examples
+    --------
+    A series of eight spectra half a second apart, with a peak that grows over time:
+
+    >>> spec = KineticSpec(
+    ...     series_size=8,
+    ...     peaks=[PeakSpec(center=550.0, fwhm=2.0, amplitude=lambda t, _: 100.0 + 50.0 * t)],
+    ...     instrument=InstrumentSpec(exposure_time_s=0.4, kinetic_cycle_time_s=0.5),
+    ... )
+    >>> spec.times()
+    array([0. , 0.5, 1. , 1.5, 2. , 2.5, 3. , 3.5])
+    """
+
+    series_size: int = 8
+    spectral_axis: SpectralAxisSpec = field(default_factory=SpectralAxisSpec)
+    peaks: Sequence[PeakSpec] = ()
+    baseline: BaselineSpec = field(default_factory=BaselineSpec)
+    noise: NoiseSpec = field(default_factory=NoiseSpec)
+    instrument: InstrumentSpec = field(default_factory=InstrumentSpec)
+    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    position_units: str = "nm"
+
+    def times(self) -> NDArray[np.float64]:
+        """Time of each spectrum of the series, in seconds from its start.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Array of `series_size` values, spaced by the kinetic cycle time.
+        """
+        return np.arange(self.series_size, dtype=np.float64) * _kinetic_cycle_time(self.instrument)
+
+    def as_mapping_spec(self) -> MappingSpec:
+        """Describe the series as a one-row mapping whose fast axis is time.
+
+        Returns
+        -------
+        MappingSpec
+            A spec whose x axis runs over the spectra of the series, in seconds, so that the
+            machinery that builds the spectra of a mapping builds those of a series unchanged.
+        """
+        return MappingSpec(
+            map=MapSpec(
+                x_size=self.series_size,
+                y_size=1,
+                x_step=_kinetic_cycle_time(self.instrument),
+                y_step=1.0,
+                units="s",
+            ),
+            spectral_axis=self.spectral_axis,
+            peaks=self.peaks,
+            baseline=self.baseline,
+            noise=self.noise,
+            instrument=self.instrument,
+        )
 
 
 def _peak_axis(spec: MappingSpec, axis: NDArray[np.float64], peak: PeakSpec) -> NDArray[np.float64]:
@@ -914,8 +1044,14 @@ def _add_noise(
     return intensities
 
 
-def _build_channel(spec: MappingSpec, axis: NDArray[np.float64]) -> Channel:
-    """Build the detector channel of a synthetic mapping.
+def _build_channel(
+    spec: MappingSpec,
+    axis: NDArray[np.float64],
+    *,
+    series_size: int = 1,
+    kinetic_cycle_time: float | None = None,
+) -> Channel:
+    """Build the detector channel of a synthetic mapping or kinetic series.
 
     Parameters
     ----------
@@ -923,13 +1059,19 @@ def _build_channel(spec: MappingSpec, axis: NDArray[np.float64]) -> Channel:
         The description of the mapping.
     axis : NDArray[np.float64]
         The spectral axis, in the units of the file.
+    series_size : int, optional
+        Number of acquisitions per point, by default 1 (a mapping).
+    kinetic_cycle_time : float | None, optional
+        Time between consecutive members of a kinetic series, in seconds. Passing it, or a
+        `series_size` greater than one, writes the channel as a kinetic series.
 
     Returns
     -------
     Channel
-        The single detector channel of the mapping.
+        The single detector channel.
     """
     instrument = spec.instrument
+    kinetic = series_size > 1 or kinetic_cycle_time is not None
     return Channel(
         DeviceGuid=NIL_GUID,
         DeviceName=instrument.detection_sys_name,
@@ -940,17 +1082,15 @@ def _build_channel(spec: MappingSpec, axis: NDArray[np.float64]) -> Channel:
         ChannelAxisUnit=spec.spectral_axis.units,
         ChannelAxisLaserWl=instrument.laser_wavelength_nm,
         ChannelAxisArray=axis,
-        SeriesSize=1,
+        SeriesSize=series_size,
         ChannelInfo=ChannelInfo(
             Temperature=instrument.temperature_c,
             ExposureTime=instrument.exposure_time_s,
-            CycleTime=(
-                instrument.cycle_time_s
-                if instrument.cycle_time_s is not None
-                else instrument.exposure_time_s
-            ),
-            AcquisitionMode="accumulate",
+            CycleTime=_cycle_time(instrument),
+            KineticCycleTime=kinetic_cycle_time,
+            AcquisitionMode=KINETIC_SERIES_MODE if kinetic else "accumulate",
             AccumulationNumber=instrument.accumulations,
+            KineticSeriesNumber=series_size if kinetic else None,
             HeadModel=instrument.head_model,
             CcdWidth=instrument.ccd_width,
             CcdHeight=instrument.ccd_height,
@@ -1156,3 +1296,162 @@ def create_smd(file: Path | str, spec: MappingSpec) -> Path:
     """
     file = Path(file)
     return write_smd(build_mapping(spec, source=file), file)
+
+
+def build_kinetic_series(spec: KineticSpec, *, source: Path | None = None) -> KineticSeries:
+    """Build a synthetic kinetic series, without writing any file.
+
+    Parameters
+    ----------
+    spec : KineticSpec
+        The description of the series.
+    source : Path | None, optional
+        Path to record as the origin of the series, by default None.
+
+    Returns
+    -------
+    KineticSeries
+        The series, holding the same information a series read from an S1D file does.
+
+    Raises
+    ------
+    ValueError
+        If a parameter cannot be broadcast to the length of the series, or if a peak has an
+        unknown shape.
+
+    Examples
+    --------
+    >>> series = build_kinetic_series(KineticSpec(series_size=5))
+    >>> series.series_size
+    5
+    >>> series.get_spectra().shape
+    (5, 512)
+    """
+    mapping_spec = spec.as_mapping_spec()
+    axis = spec.spectral_axis.build()
+    spectra = build_spectra(mapping_spec)
+    instrument = spec.instrument
+    cycle = _kinetic_cycle_time(instrument)
+
+    central_wavelength = instrument.central_wavelength_nm
+    if central_wavelength is None:
+        in_nm = convert_spectral_units(
+            axis,
+            spec.spectral_axis.units,
+            Units.nm,
+            laser_wavelength_nm=instrument.laser_wavelength_nm,
+        )
+        central_wavelength = float(np.mean(in_nm))
+
+    x_position, y_position, z_position = spec.position
+
+    init_dict: dict[str, Any] = {
+        "Vendor": DEFAULT_VENDOR,
+        "Version": "1",
+        "ScannedFrameParameters": {
+            "Vendor": DEFAULT_VENDOR,
+            "Version": "2",
+            "ScanRepeatNumber": 1,
+            "FrameHeader": {
+                "Vendor": DEFAULT_VENDOR,
+                "Version": "1",
+                "Date": instrument.measured_at.strftime(SMD_DATE_FORMAT),
+                "Time": instrument.measured_at.strftime(SMD_TIME_FORMAT),
+                "Information": instrument.information,
+                "SystemName": instrument.system_name,
+                "PositioningSysName": instrument.positioning_sys_name,
+                "DetectionSysName": instrument.detection_sys_name,
+                "ScannedDataName": "Mapping",
+            },
+            "FrameOptions": {
+                "Vendor": DEFAULT_VENDOR,
+                "Version": "1",
+                "OmuLaserWLnm": instrument.laser_wavelength_nm,
+                "OmuCurPower": instrument.laser_power_mw,
+                "OmuGratingGroove": instrument.grating_groove,
+                "OmuCentralWaveLengthNM": central_wavelength,
+                "OmuPinHoleSize": instrument.pinhole_size_um,
+            },
+            "Stage3DParameters": {
+                "Vendor": DEFAULT_VENDOR,
+                "Version": "1",
+                "AxisSizeX": 1,
+                "AxisSizeY": 1,
+                "AxisSizeZ": 1,
+                "StageAxesDimentions": {
+                    "AxisX": _axis_dict(
+                        "X",
+                        spec.position_units,
+                        start=x_position,
+                        step=1.0,
+                        in_use=True,
+                    ),
+                    "AxisY": _axis_dict(
+                        "Y",
+                        spec.position_units,
+                        start=y_position,
+                        step=1.0,
+                        in_use=True,
+                    ),
+                    "AxisZ": _axis_dict(
+                        "Z",
+                        spec.position_units,
+                        start=z_position,
+                        step=1.0,
+                        in_use=False,
+                    ),
+                },
+            },
+            "DataCalibration": {
+                "Vendor": DEFAULT_VENDOR,
+                "Version": "1",
+                "Channels": [
+                    _build_channel(
+                        mapping_spec,
+                        axis,
+                        series_size=spec.series_size,
+                        kinetic_cycle_time=cycle,
+                    )
+                ],
+            },
+            "OriginalFileName": str(source) if source is not None else None,
+            "DataBlockSizeBytes": int(spectra.nbytes),
+        },
+        "Data": spectra.ravel(),
+    }
+
+    return KineticSeries(init_dict, source=source)
+
+
+def create_s1d(file: Path | str, spec: KineticSpec) -> Path:
+    """Build a synthetic kinetic series and write it as an S1D file.
+
+    Parameters
+    ----------
+    file : Path | str
+        Path of the file to write. Parent directories are created when missing.
+    spec : KineticSpec
+        The description of the series.
+
+    Returns
+    -------
+    Path
+        The path of the file just written.
+
+    Raises
+    ------
+    ValueError
+        If a parameter cannot be broadcast to the length of the series, or if a peak has an
+        unknown shape.
+    OSError
+        If the file cannot be written.
+
+    Examples
+    --------
+    >>> from nanofinderparser import load_s1d
+    >>> path = create_s1d("synthetic.s1d", KineticSpec(series_size=5))  # doctest: +SKIP
+    >>> len(load_s1d(path))  # doctest: +SKIP
+    5
+    """
+    file = Path(file)
+    return write_s1d(build_kinetic_series(spec, source=file), file)

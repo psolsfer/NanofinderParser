@@ -1,0 +1,209 @@
+<?xml version="1.0"?>
+<SPECTRADATA>
+  <Vendor>NNFinder</Vendor>
+  <Version>1</Version>
+  <ScannedFrameParameters>
+    <Vendor>NNFinder</Vendor>
+    <Version>2</Version>
+    <ScanRepeatNumber>1</ScanRepeatNumber>
+    <FrameHeader>
+      <Vendor>NNFinder</Vendor>
+      <Version>1</Version>
+      <Date>2026/09/03</Date>
+      <Time>16:30:24</Time>
+      <Information>Not specified</Information>
+      <SystemName>TII Nanofinder</SystemName>
+      <PositioningSysName>Not specified</PositioningSysName>
+      <DetectionSysName>Andor CCD</DetectionSysName>
+      <ScannedDataName>Mapping</ScannedDataName>
+      <FunctionName>Not specified</FunctionName>
+      <Information1>Not specified</Information1>
+      <Information2>Not specified</Information2>
+      <Information3>Not specified</Information3>
+      <Information4>Not specified</Information4>
+      <Information5>Not specified</Information5>
+    </FrameHeader>
+    <FrameOptions>
+      <Vendor>NNFinder</Vendor>
+      <Version>1</Version>
+      <ScanModel>0</ScanModel>
+      <PointsMode>0</PointsMode>
+      <DerectionMode>0</DerectionMode>
+      <DisplayResult>2</DisplayResult>
+      <Display3D>1</Display3D>
+      <StoreMode>1</StoreMode>
+      <BleachEnable>-1</BleachEnable>
+      <BleachMode>0</BleachMode>
+      <RepeatScan>1</RepeatScan>
+      <SwitchingOMUCfg>0</SwitchingOMUCfg>
+      <OpenLoopX>1</OpenLoopX>
+      <OpenLoopY>0</OpenLoopY>
+      <OpenLoopZ>0</OpenLoopZ>
+      <OpenLoopQ>0</OpenLoopQ>
+      <MultiDetectionEnable>0</MultiDetectionEnable>
+      <MultiDetectionCount>0</MultiDetectionCount>
+      <MultiDetectionMode>0</MultiDetectionMode>
+      <LaserSpotShiftEnable>0</LaserSpotShiftEnable>
+      <LaserSpotShift_dX>0</LaserSpotShift_dX>
+      <LaserSpotShift_dY>0</LaserSpotShift_dY>
+      <LaserSpotShift_InvX>0</LaserSpotShift_InvX>
+      <LaserSpotShift_InvY>0</LaserSpotShift_InvY>
+      <RepeatDelayMSec>0</RepeatDelayMSec>
+      <StartDelayMSec>0</StartDelayMSec>
+      <IsAxisPointsByTableX>0</IsAxisPointsByTableX>
+      <IsAxisPointsByTableY>0</IsAxisPointsByTableY>
+      <IsAxisPointsByTableZ>0</IsAxisPointsByTableZ>
+      <AxisPointsTableSzX>0</AxisPointsTableSzX>
+      <AxisPointsTableSzY>0</AxisPointsTableSzY>
+      <AxisPointsTableSzZ>0</AxisPointsTableSzZ>
+      <OmuLaserWLnm>532</OmuLaserWLnm>
+      <OmuCurPower>1.59590673446655</OmuCurPower>
+      <OmuGratingGroove>600</OmuGratingGroove>
+      <OmuCentralWaveLengthNM>602.518676757813</OmuCentralWaveLengthNM>
+      <OmuPinHoleSize>50</OmuPinHoleSize>
+      <OmuHalfWavePos>1</OmuHalfWavePos>
+      <OmuBeamExpPos>1</OmuBeamExpPos>
+    </FrameOptions>
+    <Stage3DParameters>
+      <Vendor>NNFinder</Vendor>
+      <Version>1</Version>
+      <AxisCurrent>0</AxisCurrent>
+      <AxisSizeX>1</AxisSizeX>
+      <AxisSizeY>1</AxisSizeY>
+      <AxisSizeZ>1</AxisSizeZ>
+      <StageAxesDimentions>
+        <AxisX>
+          <AxisIsPresent>-1</AxisIsPresent>
+          <AxisIsInUse>-1</AxisIsInUse>
+          <AxisIsInversed>0</AxisIsInversed>
+          <AxisIsSlow>0</AxisIsSlow>
+          <AxisName>X</AxisName>
+          <AxisMaker>XYZ NI-DACmx</AxisMaker>
+          <AxisUnitName>Counts</AxisUnitName>
+          <AxisGuid>{00000000-0000-0000-0000-000000000000}</AxisGuid>
+          <AxisCountMax>65535</AxisCountMax>
+          <AxisCountMin>0</AxisCountMin>
+          <AxisCountCurr>0</AxisCountCurr>
+          <AxisCountPrev>0</AxisCountPrev>
+          <AxisCountStart>0</AxisCountStart>
+          <AxisCountStop>0</AxisCountStop>
+          <AxisCountStep>1</AxisCountStep>
+          <AxisUnitIndInteger>-1</AxisUnitIndInteger>
+          <AxisBiasFloat>0</AxisBiasFloat>
+          <AxisScaleFloat>1</AxisScaleFloat>
+          <AxisFloatPrecition>3</AxisFloatPrecition>
+          <AxisCountLimMax>65535</AxisCountLimMax>
+          <AxisCountLimMin>0</AxisCountLimMin>
+        </AxisX>
+        <AxisY>
+          <AxisIsPresent>-1</AxisIsPresent>
+          <AxisIsInUse>-1</AxisIsInUse>
+          <AxisIsInversed>0</AxisIsInversed>
+          <AxisIsSlow>0</AxisIsSlow>
+          <AxisName>Y</AxisName>
+          <AxisMaker>XYZ NI-DACmx</AxisMaker>
+          <AxisUnitName>Counts</AxisUnitName>
+          <AxisGuid>{00000000-0000-0000-0000-000000000000}</AxisGuid>
+          <AxisCountMax>65535</AxisCountMax>
+          <AxisCountMin>0</AxisCountMin>
+          <AxisCountCurr>0</AxisCountCurr>
+          <AxisCountPrev>0</AxisCountPrev>
+          <AxisCountStart>0</AxisCountStart>
+          <AxisCountStop>0</AxisCountStop>
+          <AxisCountStep>1</AxisCountStep>
+          <AxisUnitIndInteger>-1</AxisUnitIndInteger>
+          <AxisBiasFloat>0</AxisBiasFloat>
+          <AxisScaleFloat>1</AxisScaleFloat>
+          <AxisFloatPrecition>3</AxisFloatPrecition>
+          <AxisCountLimMax>65535</AxisCountLimMax>
+          <AxisCountLimMin>0</AxisCountLimMin>
+        </AxisY>
+        <AxisZ>
+          <AxisIsPresent>-1</AxisIsPresent>
+          <AxisIsInUse>-1</AxisIsInUse>
+          <AxisIsInversed>0</AxisIsInversed>
+          <AxisIsSlow>0</AxisIsSlow>
+          <AxisName>Z</AxisName>
+          <AxisMaker>XYZ NI-DACmx</AxisMaker>
+          <AxisUnitName>Counts</AxisUnitName>
+          <AxisGuid>{00000000-0000-0000-0000-000000000000}</AxisGuid>
+          <AxisCountMax>65535</AxisCountMax>
+          <AxisCountMin>0</AxisCountMin>
+          <AxisCountCurr>0</AxisCountCurr>
+          <AxisCountPrev>0</AxisCountPrev>
+          <AxisCountStart>0</AxisCountStart>
+          <AxisCountStop>0</AxisCountStop>
+          <AxisCountStep>1</AxisCountStep>
+          <AxisUnitIndInteger>-1</AxisUnitIndInteger>
+          <AxisBiasFloat>0</AxisBiasFloat>
+          <AxisScaleFloat>1</AxisScaleFloat>
+          <AxisFloatPrecition>3</AxisFloatPrecition>
+          <AxisCountLimMax>65535</AxisCountLimMax>
+          <AxisCountLimMin>0</AxisCountLimMin>
+        </AxisZ>
+      </StageAxesDimentions>
+      <StageAxesDimentionTables>
+        <AxisTableX>
+          <AxisTableSz>0</AxisTableSz>
+        </AxisTableX>
+        <AxisTableY>
+          <AxisTableSz>0</AxisTableSz>
+        </AxisTableY>
+        <AxisTableZ>
+          <AxisTableSz>0</AxisTableSz>
+        </AxisTableZ>
+      </StageAxesDimentionTables>
+    </Stage3DParameters>
+    <DataCalibration>
+      <Vendor>NNFinder</Vendor>
+      <Version>1</Version>
+      <Channels>1</Channels>
+      <Channel>0</Channel>
+      <SeriesCur>9</SeriesCur>
+      <ChannelRmnInd>0</ChannelRmnInd>
+      <SeriesRmnInd>2</SeriesRmnInd>
+      <DataDimentions>
+        <Channel0>
+          <DeviceGuid>{2429B3BD-59FE-4575-9C4A-D7828D9837C6}</DeviceGuid>
+          <DeviceName>Andor CCD</DeviceName>
+          <DeviceChannels>1</DeviceChannels>
+          <DeviceChannel>0</DeviceChannel>
+          <DataChannelName>Photons</DataChannelName>
+          <DataChannelUnit>Counts</DataChannelUnit>
+          <ChannelType>1</ChannelType>
+          <ChannelSize>8</ChannelSize>
+          <ChannelAxisName>Wavelength</ChannelAxisName>
+          <ChannelAxisUnit>nm</ChannelAxisUnit>
+          <ChannelAxisLaserWl>532</ChannelAxisLaserWl>
+          <SeriesType>0</SeriesType>
+          <SeriesSize>10</SeriesSize>
+          <SeriesAxisName>Series</SeriesAxisName>
+          <SeriesAxisUnit>None</SeriesAxisUnit>
+          <SeriesAxisLaserWl>0</SeriesAxisLaserWl>
+          <ChannelAxisArray>560.273376464844 560.355102539063 560.436828613281 560.5185546875 560.600341796875 560.682006835938 560.763732910156 560.845458984375 </ChannelAxisArray>
+          <SeriesAxisArray>1 2 3 4 5 6 7 8 9 10 </SeriesAxisArray>
+          <ChannelInfoSize>13</ChannelInfoSize>
+          <ChannelInfo>
+            <Item0>Head model = DU401_BVF</Item0>
+            <Item1>CCD Width (pixels) = 1024</Item1>
+            <Item2>CCD Height (pixels) = 127</Item2>
+            <Item3>Central Pixel = 518</Item3>
+            <Item4>Pixel Size [um] = 26</Item4>
+            <Item5>Calibration type: Nanofinder Calibration</Item5>
+            <Item6>Acquisition mode: Kinetic series. Number in Accumulation = 1  Number in Kinetic series = 10</Item6>
+            <Item7>Readout Mode: Single Track</Item7>
+            <Item8>Exposure time, [sec] = 0.1000 Cycle time [sec] = 0.2304 Kinetic Cycle time [sec] = 0.2304</Item8>
+            <Item9>Temperature [grad C] = -69.00</Item9>
+            <Item10>Horizontal binning = 1</Item10>
+            <Item11>Center Row = 47</Item11>
+            <Item12>Track Height = 93</Item12>
+          </ChannelInfo>
+        </Channel0>
+      </DataDimentions>
+    </DataCalibration>
+    <OriginalFileName>kinetic_small.s1d</OriginalFileName>
+    <DataLocation>Self</DataLocation>
+    <DataBlockSizeBytes>320</DataBlockSizeBytes>
+  </ScannedFrameParameters>
+</SPECTRADATA>
+ ¿7D @8D  8D Ä7D ¿7D Ä9D @8D ¿8D Ä7D @8D @8D @8D  8D Ä8D  9D @8D  8D  7D  7D  8D ¿7D ¿7D Ä8D ¿7D @FD ÄHD ÄJD ¿ID ¿GD  LD ÄGD  ID  çD ‡çD `åD `êD  çD †éD `ãD  éD ¿åD †çD ¿ãD ÄéD @ãD ‡ãD †çD †çD ¿éD  àD ‡âD @äD `çD  åD ¿èD ÄéD `éD  éD †çD  íD ¿éD  êD ‡éD  åD ¿éD †éD †çD @çD @éD  éD @íD †éD ¿åD ‡êD ¿êD †èD ‡çD  ëD ÄëD ‡èD

@@ -1,9 +1,10 @@
 """Models to parse nanofinder files."""
 
 import logging
+import re
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal, Protocol, Self, overload
 
@@ -368,6 +369,25 @@ _EXPOSURE_LABEL: Final[str] = "Exposure time"
 _ACCUMULATE_SPELLINGS: Final[frozenset[str]] = frozenset({"accomulate", "accumulate"})
 _ACCUMULATE_WRITTEN: Final[str] = "Accomulate"
 
+# Acquisition mode written by the instrument for a kinetic series, as stored in ChannelInfo.
+KINETIC_SERIES_MODE: Final[str] = "kinetic series"
+
+# The counts the acquisition item carries. A kinetic series states both; an accumulated
+# acquisition only the first.
+_ACCUMULATION_COUNT_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"Number\s+in\s+Accumulation\s*=\s*(\d+)", re.IGNORECASE
+)
+_KINETIC_COUNT_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"Number\s+in\s+Kinetic\s+series\s*=\s*(\d+)", re.IGNORECASE
+)
+
+# Separator between the two counts of the acquisition item, as the instrument writes them.
+_ACQUISITION_COUNT_SEPARATOR: Final[str] = "  "
+
+# Number of fields the exposure item splits into once it also carries the kinetic cycle time:
+# the label and the three values.
+_EXPOSURE_FIELDS_WITH_KINETIC: Final[int] = 4
+
 # Order in which the items are written back, matching the files of the instrument.
 _CHANNEL_INFO_LAYOUT: Final[tuple[str, ...]] = (
     "Head model",
@@ -399,11 +419,19 @@ class ChannelInfo(BaseModel):
     exposure_time : float | None
         Exposure time per acquisition in seconds.
     cycle_time : float | None
-        Total cycle time per acquisition in seconds.
+        Period between the start of consecutive accumulated scans, in seconds. This is the
+        "accumulate cycle time" of the instrument; it equals the exposure time plus the readout
+        time of a single scan.
+    kinetic_cycle_time : float | None
+        Period between the start of consecutive members of a kinetic series, in seconds. Only
+        written for a kinetic series; it is the time between the spectra of the series, and so
+        the step of their time axis.
     acquisition_mode : str | None
-        Acquisition mode (e.g., ``"accumulate"``, ``"single"``).
+        Acquisition mode (e.g., ``"accumulate"``, ``"kinetic series"``, ``"single"``).
     accumulation_number : int | None
-        Number of accumulations (only set when acquisition_mode is ``"accumulate"``).
+        Number of scans added together to make each acquisition.
+    kinetic_series_number : int | None
+        Number of members of the kinetic series. Only set for a kinetic series.
     head_model : str | None
         CCD detector head model identifier.
     ccd_width : int | None
@@ -432,8 +460,10 @@ class ChannelInfo(BaseModel):
     temperature: float | None = Field(None, alias="Temperature")
     exposure_time: float | None = Field(None, alias="ExposureTime")
     cycle_time: float | None = Field(None, alias="CycleTime")
+    kinetic_cycle_time: float | None = Field(None, alias="KineticCycleTime")
     acquisition_mode: str | None = Field(None, alias="AcquisitionMode")
     accumulation_number: int | None = Field(None, alias="AccumulationNumber")
+    kinetic_series_number: int | None = Field(None, alias="KineticSeriesNumber")
     head_model: str | None = Field(None, alias="HeadModel")
     ccd_width: int | None = Field(None, alias="CcdWidth")
     ccd_height: int | None = Field(None, alias="CcdHeight")
@@ -482,27 +512,45 @@ class ChannelInfo(BaseModel):
         return None if value is None else item.template.format(value)
 
     def _acquisition_item(self) -> str | None:
-        """Write the acquisition mode item, or None when the mode is unknown."""
+        """Write the acquisition mode item, or None when the mode is unknown.
+
+        A kinetic series states how many scans are accumulated into each of its members and how
+        many members it holds, so the item may carry two counts rather than one.
+        """
         if self.acquisition_mode is None:
             return None
 
         mode = self.acquisition_mode.lower()
         text = _ACCUMULATE_WRITTEN if mode in _ACCUMULATE_SPELLINGS else mode.capitalize()
-        if self.accumulation_number is None:
-            return f"{_ACQUISITION_LABEL}: {text}"
-        return f"{_ACQUISITION_LABEL}: {text}. Number in Accumulation = {self.accumulation_number}"
+        item = f"{_ACQUISITION_LABEL}: {text}"
+
+        counts: list[str] = []
+        if self.accumulation_number is not None:
+            counts.append(f"Number in Accumulation = {self.accumulation_number}")
+        if self.kinetic_series_number is not None:
+            counts.append(f"Number in Kinetic series = {self.kinetic_series_number}")
+
+        if not counts:
+            return item
+        return f"{item}. " + _ACQUISITION_COUNT_SEPARATOR.join(counts)
 
     def _readout_item(self) -> str | None:
         """Write the readout mode item, or None when it is unknown."""
         return None if self.readout_mode is None else f"{_READOUT_LABEL}: {self.readout_mode}"
 
     def _exposure_item(self) -> str | None:
-        """Write the exposure and cycle times, which share a single item."""
+        """Write the exposure and cycle times, which share a single item.
+
+        A kinetic series adds the kinetic cycle time to the same item.
+        """
         if self.exposure_time is None:
             return None
 
         cycle = self.cycle_time if self.cycle_time is not None else self.exposure_time
-        return f"{_EXPOSURE_LABEL}, [sec] = {self.exposure_time:.4f} Cycle time [sec] = {cycle:.4f}"
+        item = f"{_EXPOSURE_LABEL}, [sec] = {self.exposure_time:.4f} Cycle time [sec] = {cycle:.4f}"
+        if self.kinetic_cycle_time is None:
+            return item
+        return f"{item} Kinetic Cycle time [sec] = {self.kinetic_cycle_time:.4f}"
 
 
 class Channel(BaseModel):
@@ -549,10 +597,10 @@ class Channel(BaseModel):
     channel_axis_array: NDArray[np.float64] = Field(
         alias="ChannelAxisArray"
     )  # IMPORTANT # Spectral axis, with units given by ChannelAxisUnit
-    # TODO Add support for SeriesSize > 1
     series_size: int = Field(
         alias="SeriesSize"
-    )  # Number of series per spatial point; >1 not yet supported
+    )  # IMPORTANT Number of acquisitions per spatial point. Mappings hold one; a kinetic series
+    # (".s1d" file, see KineticSeries) holds one per member of the series.
 
     channel_info: ChannelInfo = Field(alias="ChannelInfo")
 
@@ -625,23 +673,55 @@ class Channel(BaseModel):
         text: str,
         info: dict[str, Any],
     ) -> None:
+        """Read the acquisition mode item and the counts that follow it.
+
+        Parameters
+        ----------
+        text : str
+            The item, for instance ``"Acquisition mode: Kinetic series. Number in Accumulation
+            = 1  Number in Kinetic series = 500"``.
+        info : dict[str, Any]
+            Fields read so far, updated in place.
+        """
         mode_info = text.split(":", 1)[1].strip().split(".")
-        mode = mode_info[0].strip().lower()
+        info["AcquisitionMode"] = mode_info[0].strip().lower()
 
-        info["AcquisitionMode"] = mode
+        accumulations = _ACCUMULATION_COUNT_PATTERN.search(text)
+        if accumulations is not None:
+            info["AccumulationNumber"] = int(accumulations.group(1))
 
-        if mode in _ACCUMULATE_SPELLINGS:
-            info["AccumulationNumber"] = int(mode_info[1].split("=", 1)[1].strip())
+        kinetic = _KINETIC_COUNT_PATTERN.search(text)
+        if kinetic is not None:
+            info["KineticSeriesNumber"] = int(kinetic.group(1))
 
     @staticmethod
     def _parse_exposure_time(
         text: str,
         info: dict[str, Any],
     ) -> None:
+        """Read the exposure time and the cycle times, which share a single item.
+
+        Parameters
+        ----------
+        text : str
+            The item, for instance ``"Exposure time, [sec] = 0.1000 Cycle time [sec] = 0.2304
+            Kinetic Cycle time [sec] = 0.2304"``. The last field is only written for a kinetic
+            series.
+        info : dict[str, Any]
+            Fields read so far, updated in place.
+
+        Notes
+        -----
+        Every value but the last is followed by the label of the next one, so only the first
+        token after each ``=`` sign belongs to the value.
+        """
         parts = text.split("=")
 
         info["ExposureTime"] = float(parts[1].strip().split()[0])
-        info["CycleTime"] = float(parts[2].strip())
+        info["CycleTime"] = float(parts[2].strip().split()[0])
+
+        if len(parts) >= _EXPOSURE_FIELDS_WITH_KINETIC:
+            info["KineticCycleTime"] = float(parts[3].strip().split()[0])
 
 
 class DataCalibration(VendorVersion):
@@ -1238,6 +1318,565 @@ class Mapping:
         from nanofinderparser.write import write_smd  # noqa: PLC0415
 
         return write_smd(self, file)
+
+
+class KineticSeries:
+    """Model for a kinetic series obtained from a ``.s1d`` file.
+
+    A kinetic series is a set of spectra measured one after another at a single point of the
+    sample, at a fixed period. Where a :class:`Mapping` spreads its spectra over the points of a
+    spatial scan, a kinetic series spreads them over time, so the axis that indexes the spectra
+    is a time axis rather than a pair of stage coordinates.
+
+    The instrument records no timestamp per spectrum: it records the period between them (the
+    *kinetic cycle time*), so the time axis this class exposes is nominal, computed from that
+    period, and its zero is the start of the first exposure.
+
+    Note: It is recommended to create instances of this class using the
+    :func:`~nanofinderparser.load.load_s1d` function rather than instantiating it directly.
+
+    Attributes
+    ----------
+    vendor : str
+        The vendor of the data.
+    version : str
+        The version of the data format.
+    scanned_frame_parameters : ScannedFrameParameters
+        The scanned frame parameters, laid out exactly as in an SMD file.
+    data : NDArray
+        The raw flat spectral data as read from the binary section of the file, shape
+        ``(series_size * spectral_len,)``.
+    source : Path | None
+        Path of the file the series was read from, when known.
+
+    Properties
+    ----------
+    series_size : int
+        Number of spectra of the series.
+    exposure_time : float | None
+        Time in seconds during which the detector collects light for a single scan.
+    accumulation_number : int | None
+        Number of scans added together to make each spectrum of the series.
+    accumulate_cycle_time : float | None
+        Period in seconds between the start of the scans accumulated into one spectrum.
+    kinetic_cycle_time : float | None
+        Period in seconds between the start of consecutive spectra of the series.
+    time_step : float | None
+        Time in seconds between consecutive spectra, as used to build the time axis.
+    time_axis : NDArray[np.float64]
+        Time of each spectrum in seconds, measured from the start of the series.
+    timestamps : list[datetime]
+        Absolute date and time of each spectrum.
+    duration : float
+        Total length of the series in seconds.
+    position : tuple[float, float, float]
+        Stage position at which the series was measured, in the (x,y,z) axes.
+    position_units : tuple[str, str, str]
+        Units of the stage position in the (x,y,z) axes.
+    laser_wavelength : float
+        Wavelength of the laser in nm.
+    laser_power : float
+        Power of the laser in mW.
+    datetime : datetime
+        Date and time at which the series started.
+    date : date
+        Date of the measurement.
+    original_file_name : str | None
+        Original file path as stored on the acquisition computer.
+    expected_data_size : int
+        Number of values the parameters of the series describe.
+
+    Methods
+    -------
+    get_spectra(channel: int = 0)
+        Return the data reshaped as ``(series_size, spectral_len)``.
+    single_channel()
+        Return the only detector channel of the series, checking it is supported.
+    get_spectral_axis(spectral_units=None, channel: int = 0)
+        Get the spectral axis, optionally converted to other units.
+    get_spectral_axis_len(channel: int = 0)
+        Get the number of data points of each spectrum.
+    to_df(spectral_units=None, index="time", channel: int = 0)
+        Export the series to a DataFrame, one row per spectrum.
+    to_csv(path=Path(), filename="", spectral_units=None, index="time", channel: int = 0)
+        Export the series to a csv file.
+    to_s1d(file)
+        Write the series back as a NanoFinder S1D file.
+
+    Examples
+    --------
+    >>> from nanofinderparser import load_s1d
+    >>> series = load_s1d(Path("kinetic.s1d"))  # doctest: +SKIP
+    >>> series.get_spectra().shape  # doctest: +SKIP
+    (500, 1024)
+    >>> series.time_axis[:3]  # doctest: +SKIP
+    array([0.    , 0.2304, 0.4608])
+    """
+
+    def __init__(self, init_dict: dict[Any, Any], source: Path | None = None) -> None:
+        """Initialize a KineticSeries instance.
+
+        Parameters
+        ----------
+        init_dict : dict[str, Any]
+            A dictionary containing the initialization data for the KineticSeries instance.
+            Expected keys:
+            - 'Vendor': str, optional
+            - 'Version': str, optional
+            - 'ScannedFrameParameters': dict
+            - 'Data': Sequence[float] | NDArray
+        source : Path | None, optional
+            Path of the file the series was read from, by default None.
+
+        Raises
+        ------
+        KeyError
+            If any of the required keys are missing from init_dict.
+        """
+        self.vendor: str = init_dict.get("Vendor", "")
+        self.version: str = init_dict.get("Version", "")
+        self.scanned_frame_parameters = ScannedFrameParameters(
+            **init_dict["ScannedFrameParameters"]
+        )
+        self.data = init_dict["Data"]
+        self.source = source
+
+    @property
+    def data(self) -> NDArray[Any]:
+        """The raw flat array of every spectrum, as read from the binary part of the file.
+
+        The array has shape ``(series_size * spectral_len,)`` -- that is, exactly as it comes out
+        of the binary section, without any reshaping. Use :meth:`get_spectra` to obtain the 2-D
+        ``(series_size, spectral_len)`` view.
+        """
+        return self._data
+
+    @data.setter
+    def data(self, value: Sequence[float] | NDArray[Any]) -> None:
+        self._data = np.asarray(value)  # dtype inferred; stored flat as-is
+
+    def __len__(self) -> int:
+        """Return the number of spectra of the series."""
+        return self.series_size
+
+    def single_channel(self) -> Channel:
+        """Return the only detector channel of the series.
+
+        Returns
+        -------
+        Channel
+            The single detector channel the series holds.
+
+        Raises
+        ------
+        NotImplementedError
+            If the file holds more than one detector channel, or was measured over more than one
+            point of the stage, neither of which is supported yet.
+
+        Notes
+        -----
+        Both reading and writing a file go through this check, so the two agree on what a
+        supported kinetic series is.
+        """
+        parameters = self.scanned_frame_parameters
+        channels = parameters.data_calibration.channels
+        subject = str(self.source) if self.source is not None else "The kinetic series"
+
+        if len(channels) != 1:
+            msg = (
+                f"{subject} declares {len(channels)} detector channels; only single-channel S1D "
+                "files are supported."
+            )
+            raise NotImplementedError(msg)
+
+        stage = parameters.stage_3d_parameters
+        points = stage.axis_size_x * stage.axis_size_y * stage.axis_size_z
+        if points != 1:
+            msg = (
+                f"{subject} spans {stage.axis_size_x} x {stage.axis_size_y} x "
+                f"{stage.axis_size_z} stage points; a kinetic series is measured at a single "
+                "point. Use load_smd() for a spatial mapping."
+            )
+            raise NotImplementedError(msg)
+
+        return channels[0]
+
+    @property
+    def series_size(self) -> int:
+        """Number of spectra of the series."""
+        return self.single_channel().series_size
+
+    @property
+    def expected_data_size(self) -> int:
+        """Number of values the parameters of the series describe.
+
+        This is the number of spectra of the series times the number of points of each spectrum,
+        which is what the binary block of the file must hold.
+        """
+        channel = self.single_channel()
+        return channel.series_size * channel.channel_size
+
+    def get_spectra(self, channel: int = 0) -> NDArray[Any]:
+        """Return the data reshaped as ``(series_size, spectral_len)``.
+
+        This is the canonical 2-D view of the flat :attr:`data` array: one row per spectrum of
+        the series, in acquisition order, one column per point of the spectral axis.
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        NDArray[Any]
+            Array of shape ``(series_size, spectral_len)``. This is a reshaped view of
+            :attr:`data`, so it costs nothing and shares its memory.
+        """
+        return self._data.reshape(-1, self.get_spectral_axis_len(channel=channel))
+
+    def get_spectral_axis(
+        self,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+        channel: int = 0,
+    ) -> NDArray[np.float64]:
+        """Get the spectral axis, optionally converting it to the specified units.
+
+        Parameters
+        ----------
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            The units to convert the spectral axis to. If None, returns the original units.
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The spectral axis, shared by every spectrum of the series, in the given units.
+        """
+        raw_axis = self._get_raw_spectral_axis(channel)
+        current_units = self._get_channel_axis_unit(channel)
+        if spectral_units is None or current_units == spectral_units:
+            return raw_axis
+
+        new_unit = validate_units(spectral_units)
+
+        return convert_spectral_units(
+            raw_axis,
+            current_units,
+            new_unit,
+            laser_wavelength_nm=self.laser_wavelength,
+        )
+
+    def get_spectral_axis_len(self, channel: int = 0) -> int:
+        """Get the number of data points of each spectrum of the series.
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        int
+            Number of data points of each spectrum.
+        """
+        return self.scanned_frame_parameters.data_calibration.channels[channel].channel_size
+
+    def _get_raw_spectral_axis(self, channel: int = 0) -> NDArray[np.float64]:
+        """Get the spectral axis for the given channel without unit conversion.
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The spectral axis, in the units stored in the file.
+        """
+        return self.scanned_frame_parameters.data_calibration.channels[channel].channel_axis_array
+
+    def _get_channel_axis_unit(self, channel: int = 0) -> Literal["nm", "cm-1", "eV"]:
+        """Get the units of the spectral axis for the given channel.
+
+        Parameters
+        ----------
+        channel : int, optional
+            The channel index, by default 0.
+
+        Returns
+        -------
+        Literal["nm", "cm-1", "eV"]
+            Units of the spectral axis.
+        """
+        return self.scanned_frame_parameters.data_calibration.channels[channel].channel_axis_unit
+
+    @property
+    def _channel_info(self) -> ChannelInfo:
+        """Acquisition settings of the only detector channel of the series."""
+        return self.single_channel().channel_info
+
+    @property
+    def exposure_time(self) -> float | None:
+        """Time in seconds during which the detector collects light for a single scan."""
+        return self._channel_info.exposure_time
+
+    @property
+    def accumulation_number(self) -> int | None:
+        """Number of scans added together to make each spectrum of the series."""
+        return self._channel_info.accumulation_number
+
+    @property
+    def accumulate_cycle_time(self) -> float | None:
+        """Period in seconds between the start of the scans accumulated into one spectrum.
+
+        Only meaningful when :attr:`accumulation_number` is greater than one; otherwise it is
+        simply the time a single scan takes, exposure plus readout.
+        """
+        return self._channel_info.cycle_time
+
+    @property
+    def kinetic_cycle_time(self) -> float | None:
+        """Period in seconds between the start of consecutive spectra of the series."""
+        return self._channel_info.kinetic_cycle_time
+
+    @property
+    def time_step(self) -> float | None:
+        """Time in seconds between consecutive spectra, as used to build the time axis.
+
+        This is the kinetic cycle time. Files that do not record it fall back to the accumulate
+        cycle time, which is the same number whenever a single scan is accumulated per spectrum,
+        and then to the exposure time, which ignores the readout of the detector and so
+        underestimates the period. None when the file records no timing at all.
+        """
+        info = self._channel_info
+        for value in (info.kinetic_cycle_time, info.cycle_time, info.exposure_time):
+            if value is not None:
+                return float(value)
+        return None
+
+    @property
+    def time_axis(self) -> NDArray[np.float64]:
+        """Time of each spectrum in seconds, measured from the start of the series.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Array of `series_size` values, starting at zero and spaced by :attr:`time_step`.
+
+        Raises
+        ------
+        ValueError
+            If the file records no timing, so the spacing of the spectra is unknown.
+
+        Notes
+        -----
+        The instrument does not timestamp the individual spectra, so these times are nominal:
+        they assume the series ran at exactly the period it was set up with.
+        """
+        step = self.time_step
+        if step is None:
+            subject = str(self.source) if self.source is not None else "The kinetic series"
+            msg = (
+                f"{subject} records neither a kinetic cycle time nor an exposure time, so the "
+                "time between its spectra is unknown."
+            )
+            raise ValueError(msg)
+
+        return np.arange(self.series_size, dtype=np.float64) * step
+
+    @property
+    def timestamps(self) -> list[datetime]:
+        """Absolute date and time of each spectrum of the series.
+
+        Returns
+        -------
+        list[datetime]
+            The start of the measurement, as recorded in the header, offset by
+            :attr:`time_axis`.
+
+        Raises
+        ------
+        ValueError
+            If the file records no timing, so the spacing of the spectra is unknown.
+        """
+        start = self.datetime
+        return [start + timedelta(seconds=float(offset)) for offset in self.time_axis]
+
+    @property
+    def duration(self) -> float:
+        """Total length of the series in seconds, from the start of its first spectrum.
+
+        Raises
+        ------
+        ValueError
+            If the file records no timing, so the spacing of the spectra is unknown.
+        """
+        return float(self.time_axis[-1]) if self.series_size else 0.0
+
+    @property
+    def position(self) -> tuple[float, float, float]:
+        """Stage position at which the series was measured, in the (x,y,z) axes."""
+        return (
+            self.scanned_frame_parameters.stage_3d_parameters.stage_axes_dimensions.start_position
+        )
+
+    @property
+    def position_units(self) -> tuple[str, str, str]:
+        """Units of the stage position in the (x,y,z) axes."""
+        return self.scanned_frame_parameters.stage_3d_parameters.stage_axes_dimensions.step_units
+
+    @property
+    def laser_wavelength(self) -> float:
+        """Wavelength of the laser in nm."""
+        return self.scanned_frame_parameters.frame_options.laser_wavelength_nm
+
+    @property
+    def laser_power(self) -> float:
+        """Power of the laser in mW."""
+        return self.scanned_frame_parameters.frame_options.current_power
+
+    @property
+    def datetime(self) -> datetime:
+        """Date and time at which the series started."""
+        return self.scanned_frame_parameters.frame_header.datetime
+
+    @property
+    def date(self) -> date:
+        """Date of the measurement."""
+        return self.scanned_frame_parameters.frame_header.date_model
+
+    @property
+    def original_file_name(self) -> str | None:
+        """Original file path as stored on the acquisition computer."""
+        return self.scanned_frame_parameters.original_file_name
+
+    def to_df(
+        self,
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+        index: Literal["time", "series"] = "time",
+        channel: int = 0,
+    ) -> pd.DataFrame:
+        """Export the series to a DataFrame, one row per spectrum.
+
+        The header corresponds to the spectral axis in the selected units, and each row to a
+        single spectrum of the series, in acquisition order.
+
+        Parameters
+        ----------
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            Units in which the spectral axis will be exported, by default None (the units stored
+            in the file).
+        index : {"time", "series"}, optional
+            What to index the rows by: the nominal time of each spectrum in seconds, by default,
+            or its zero-based position in the series.
+        channel : int, optional
+            The channel index to export, by default 0.
+
+        Returns
+        -------
+        pd.DataFrame
+            The spectra, indexed as requested.
+
+        Raises
+        ------
+        ValueError
+            If ``index="time"`` but the file records no timing.
+
+        Notes
+        -----
+        This layout matches :meth:`Mapping.to_df`, which also puts one spectrum per row, with
+        the time of the measurement taking the place of the map coordinates.
+        """
+        spectral_axis = self.get_spectral_axis(spectral_units=spectral_units, channel=channel)
+
+        if index == "time":
+            row_index = pd.Index(self.time_axis, name="time (s)")
+        else:
+            row_index = pd.Index(np.arange(self.series_size), name="series")
+
+        return pd.DataFrame(self.get_spectra(channel), columns=spectral_axis, index=row_index)
+
+    def to_csv(
+        self,
+        path: Path = Path(),
+        filename: str = "",
+        spectral_units: Units | Literal["nm", "cm-1", "eV", "raman_shift"] | None = None,
+        index: Literal["time", "series"] = "time",
+        channel: int = 0,
+    ) -> Path:
+        """Export the series to a csv file.
+
+        The header corresponds to the spectral axis in the selected units, and each row to a
+        single spectrum of the series. The first column holds the time of each spectrum.
+
+        Parameters
+        ----------
+        path : Path, optional
+            Folder in which the file will be saved, by default Path().
+        filename : str, optional
+            Name to use for the file, by default "" (the name of the source file, or
+            ``"kinetic_series"`` when the series was not read from one). Any extension will be
+            replaced by ".csv".
+        spectral_units : Units | {"nm", "cm-1", "eV", "raman_shift"} | None, optional
+            Units in which the spectral axis will be exported, by default None.
+        index : {"time", "series"}, optional
+            What to write in the first column: the nominal time of each spectrum in seconds, by
+            default, or its zero-based position in the series.
+        channel : int, optional
+            The channel index to export, by default 0.
+
+        Returns
+        -------
+        Path
+            The path of the written file.
+        """
+        if filename:
+            stem = Path(filename).with_suffix("").as_posix()
+        elif self.source is not None:
+            stem = self.source.stem
+        else:
+            stem = "kinetic_series"
+
+        file_path = path / (clean_filename(stem) + ".csv")
+
+        path.mkdir(parents=True, exist_ok=True)
+        self.to_df(spectral_units, index=index, channel=channel).to_csv(file_path, na_rep="NaN")
+        return file_path
+
+    def to_s1d(self, file: Path | str) -> Path:
+        """Write the series back as a NanoFinder S1D file.
+
+        Parameters
+        ----------
+        file : Path | str
+            Path of the file to write. Parent directories are created when missing.
+
+        Returns
+        -------
+        Path
+            The path of the file just written.
+
+        Raises
+        ------
+        NotImplementedError
+            If the series holds more than one detector channel, or spans more than one stage
+            point.
+        ValueError
+            If the number of values does not match the series and spectrum length of the header.
+        OSError
+            If the file cannot be written.
+
+        Notes
+        -----
+        Only the fields this class models are written; see
+        :func:`~nanofinderparser.write.write_s1d`.
+        """
+        from nanofinderparser.write import write_s1d  # noqa: PLC0415
+
+        return write_s1d(self, file)
 
 
 # Number of arrays NanoFinder stores per spectrum frame: the spectral axis and the intensities.

@@ -4,11 +4,12 @@
 
 NanoFinderParser is a Python library for parsing the data files produced by NanoFinder instruments. This library provides a set of tools to read, parse, and manipulate them.
 
-There are two kinds of file, and each has its own loader:
+There are three kinds of file, and each has its own loader:
 
 | File | Contents | Loader |
 | ---- | -------- | ------ |
 | `.smd` | A mapping: one spectrum per point of a spatial scan | `load_smd` |
+| `.s1d` | A kinetic series: one spectrum per time step, at a single point | `load_s1d` |
 | `.mdt` | Individual spectra, and 2-D maps | `load_mdt`, `load_mdt_images` |
 
 ## Installation
@@ -185,6 +186,82 @@ nanofinderparser info mapping_file.smd
 ```
 
 This command will show details such as the laser wavelength and power, exposure time, map and step size, ...
+
+## Kinetic series (`.s1d`)
+
+When you keep the laser on one spot and record a spectrum every so often — following a reaction,
+a laser-induced change, a bleaching curve — NanoFinder saves the result as an S1D file. It is the
+same container as an SMD file, but its spectra are spread over time instead of over the sample,
+so `load_s1d` returns a `KineticSeries`:
+
+```python
+from pathlib import Path
+from nanofinderparser import load_s1d
+
+series = load_s1d(Path("path/to/your/file.s1d"))
+
+print(len(series))  # 500 spectra
+print(series.get_spectra().shape)  # (500, 1024)
+```
+
+### The time axis
+
+The instrument does not timestamp each spectrum: it records the period it was set up with. That
+period, the *kinetic cycle time*, is what spaces the spectra:
+
+```python
+print(series.exposure_time)  # 0.1 s of light per scan
+print(series.accumulation_number)  # scans added into each spectrum
+print(series.accumulate_cycle_time)  # 0.2304 s between those scans
+print(series.kinetic_cycle_time)  # 0.2304 s between consecutive spectra
+
+series.time_axis  # array([0., 0.2304, 0.4608, ...]), seconds from the start
+series.timestamps  # the same, as absolute datetimes
+series.duration  # 114.97 s
+```
+
+!!! note "The times are nominal"
+    They assume the series ran at exactly the period it was set up with. Nothing in the file
+    records when a given spectrum was actually taken.
+
+### Working with a series
+
+Everything else works as it does for a mapping — a single shared spectral axis, converted to
+whatever units you work in:
+
+```python
+axis = series.get_spectral_axis("raman_shift")
+spectra = series.get_spectra()  # (series_size, spectral_len), acquisition order
+
+print(series.laser_wavelength, series.laser_power)
+print(series.datetime)  # when the series started
+print(series.position, series.position_units)  # where it was measured
+```
+
+### Exporting a series
+
+`to_df` puts one spectrum per row, indexed by its time in seconds, with the spectral axis as the
+header:
+
+```python
+df = series.to_df(spectral_units="raman_shift")
+df = series.to_df(index="series")  # number the rows instead of timing them
+
+series.to_csv(path=Path("output"), spectral_units="raman_shift")
+```
+
+### CLI usage
+
+```shell
+# Convert a kinetic series (or every S1D file in a folder) to CSV
+nanofinderparser convert-s1d input_file.s1d [output_folder] --units raman_shift
+
+# Number the rows rather than timing them
+nanofinderparser convert-s1d input_file.s1d output_folder --index series
+
+# Show the settings of the series
+nanofinderparser info-s1d input_file.s1d
+```
 
 ## Individual spectra (`.mdt`)
 

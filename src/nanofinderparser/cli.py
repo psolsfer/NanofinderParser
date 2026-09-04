@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.progress import Progress
 from rich.table import Table
 
-from nanofinderparser import load_mdt_file, load_smd
+from nanofinderparser import load_mdt_file, load_s1d, load_smd
 from nanofinderparser.units import Units
 from nanofinderparser.utils import SaveMapCoords
 
@@ -112,6 +112,107 @@ def info(file: Annotated[Path, typer.Argument(..., help="Path to the SMD file")]
         )
         table.add_row("Spectral Points", str(mapping.get_spectral_axis_len()))
         table.add_row("Spectral Units", mapping._get_channel_axis_unit())  # noqa: SLF001
+
+        console.print(table)
+    except Exception as e:
+        console.print(f"[red]Error reading file: {e}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@app.command(
+    "convert-s1d",
+    short_help="Convert a S1D file(s) of a kinetic series to CSV.",
+    no_args_is_help=True,
+)
+def convert_s1d(
+    input_path: Annotated[Path, typer.Argument(..., help="Path to the S1D file or folder")],
+    output: Annotated[Path | None, typer.Argument(help="Output folder for CSV file(s)")] = None,
+    units: Annotated[
+        Units, typer.Option(case_sensitive=False, help="Units for the spectral axis")
+    ] = Units.raman_shift,
+    index: Annotated[
+        str,
+        typer.Option(
+            case_sensitive=False,
+            help="First column of the CSV: 'time' (seconds) or 'series' (position)",
+        ),
+    ] = "time",
+) -> None:
+    """Convert S1D file(s) to CSV format.
+
+    If input is a folder, converts all S1D files in the folder. Each file becomes a single CSV
+    with one row per spectrum of the kinetic series.
+    """
+    if index not in ("time", "series"):
+        msg = "Index must be either 'time' or 'series'"
+        raise typer.BadParameter(msg)
+
+    if input_path.is_file():
+        files_to_convert = [input_path]
+    elif input_path.is_dir():
+        files_to_convert = list(input_path.glob("*.s1d"))
+    else:
+        msg = "Input must be a file or directory"
+        raise typer.BadParameter(msg)
+
+    if not files_to_convert:
+        console.print("[yellow]No S1D files found in the specified directory.[/yellow]")
+        return
+
+    output_dir = output or (input_path.parent if input_path.is_file() else input_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with Progress() as progress:
+        task = progress.add_task("[cyan]Converting files...", total=len(files_to_convert))
+        try:
+            for file in files_to_convert:
+                series = load_s1d(file)
+                written = series.to_csv(
+                    path=output_dir,
+                    filename=file.stem,
+                    spectral_units=units.value,
+                    index=index,  # type: ignore[arg-type]
+                )
+                progress.update(task, advance=1)
+                console.print(f"[green]Converted {file} to {written}[/green]")
+            console.print(f"[green]Successfully converted {len(files_to_convert)} file(s)[/green]")
+        except Exception as e:
+            console.print(f"[red]Error converting '{file}': {e}[/red]")
+            raise typer.Exit(code=1) from e
+
+
+@app.command("info-s1d", no_args_is_help=True)
+def info_s1d(file: Annotated[Path, typer.Argument(..., help="Path to the S1D file")]) -> None:
+    """Display information about an S1D file."""
+    try:
+        series = load_s1d(file)
+        table = Table(title=f"S1D File Information: {file.name}")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="magenta")
+
+        table.add_row("Date", str(series.datetime))
+        table.add_row("Laser Wavelength", f"{series.laser_wavelength:.2f} nm")
+        table.add_row("Laser Power", f"{series.laser_power:.2f} mW")
+        table.add_row("Spectra in Series", str(series.series_size))
+
+        for label, value, unit in (
+            ("Exposure Time", series.exposure_time, "s"),
+            ("Accumulate Cycle Time", series.accumulate_cycle_time, "s"),
+            ("Kinetic Cycle Time", series.kinetic_cycle_time, "s"),
+        ):
+            table.add_row(label, "Not available" if value is None else f"{value:.4f} {unit}")
+
+        accumulations = series.accumulation_number
+        table.add_row(
+            "Accumulations", "Not available" if accumulations is None else str(accumulations)
+        )
+        table.add_row(
+            "Total Duration",
+            "Not available" if series.time_step is None else f"{series.duration:.2f} s",
+        )
+        table.add_row("CCD Temperature (°C)", f"{series.single_channel().channel_info.temperature}")
+        table.add_row("Spectral Points", str(series.get_spectral_axis_len()))
+        table.add_row("Spectral Units", series._get_channel_axis_unit())  # noqa: SLF001
 
         console.print(table)
     except Exception as e:
