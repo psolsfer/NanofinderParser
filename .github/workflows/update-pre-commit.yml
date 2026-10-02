@@ -1,5 +1,9 @@
 name: Update pre-commit hooks
 
+permissions:
+  contents: write
+  pull-requests: write
+
 on:
   schedule:
     - cron: "0 8 1 * *"  # 1st of every month at 08:00 UTC
